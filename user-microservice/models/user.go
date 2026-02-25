@@ -19,6 +19,11 @@ type RoomCreating struct {
 	RoomName string `json:"roomName"`
 }
 
+type VerifyUser struct {
+	UserId uuid.UUID `json:"userId"`
+	Code string `json:"code"`
+}
+
 // type DataForRegister struct {
 // 	// Id string `json:"id"`
 // 	Code int `json:"code"`

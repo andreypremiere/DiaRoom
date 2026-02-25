@@ -19,6 +19,7 @@ import (
 
 type UserServiceInter interface {
 	AddUser(ctx context.Context, user *models.RegisterUser) (uuid.UUID, error)
+	VerifyCode(ctx context.Context, verifyUser models.VerifyUser) (string, error)
 }
 
 type userService struct {
@@ -114,6 +115,24 @@ func (us *userService) DeleteUserById(ctx context.Context, userId uuid.UUID) err
 func (us *userService) AddCodeWithTimeout(ctx context.Context, userId uuid.UUID, code string) error {
 	err := us.userRepo.AddCodeWithTimeout(ctx, userId, code)
 	return err
+}
+
+func (us *userService) VerifyCode(ctx context.Context, verifyUser models.VerifyUser) (string, error) {
+	gotCode, err := us.userRepo.GetValueByKey(ctx, verifyUser.UserId)
+	fmt.Println("Полученный код", gotCode)
+	if err != nil {
+		return "", errors.Join(errors.New("Что-то пошло не так во время получения кода"), err)
+	}
+
+	if gotCode != verifyUser.Code {
+		return "", errors.New("Введенный код не совпадает с полученным")
+	}
+
+	// Запрос необходимых данных о комнате (если нужно)
+
+	// Генерация токена
+
+	return "someToken", nil
 }
 
 func NewUserService(userRepo repositories.UserRepositoryInter, smsProvider utils.SmsProvider) *userService {

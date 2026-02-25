@@ -15,6 +15,7 @@ type UserRepositoryInter interface {
 	AddUser(ctx context.Context, id uuid.UUID, numberPhone string) error
 	DeleteUserById(criticalCtx context.Context, userId uuid.UUID) error
 	AddCodeWithTimeout(ctx context.Context, userId uuid.UUID, code string) error
+	GetValueByKey(ctx context.Context, userId uuid.UUID) (string, error)
 }
 
 type userRepository struct {
@@ -40,6 +41,13 @@ func (ur *userRepository) AddCodeWithTimeout(
 	return err
 }
 
+func (ur *userRepository) GetValueByKey(ctx context.Context, userId uuid.UUID) (string, error) {
+	result := ur.rdb.Get(ctx, userId.String())
+	
+	return result.Val(), result.Err()
+}
+
 func NewUserRepository(dbConnection *pgxpool.Pool, rdb *redis.Client) *userRepository {
 	return &userRepository{db: dbConnection, rdb: rdb}
 }
+
