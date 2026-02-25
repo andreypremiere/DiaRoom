@@ -8,9 +8,11 @@ import (
 	"user-microservice/models"
 	"user-microservice/repositories"
 	"user-microservice/services"
+	"user-microservice/utils"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 // App объединяет все зависимости нашего приложения
@@ -76,9 +78,18 @@ func main() {
 		return
 	}
 
+	// Создание клиента для redis
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "redis-cache:6379",
+		Password: "",
+		DB: 0,
+	})
+
+	smsProvider := utils.ConsoleSms{}
+
 	// Создание зависимостей
-	userRepo := repositories.NewUserRepository(poolPg)
-	userServ := services.NewUserService(userRepo)
+	userRepo := repositories.NewUserRepository(poolPg, rdb)
+	userServ := services.NewUserService(userRepo, smsProvider)
 
 	// Создание структуры сервера и внедрение зависимостей
 	app := &App{
