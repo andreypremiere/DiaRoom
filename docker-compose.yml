@@ -1,0 +1,84 @@
+# Указываем версию файла
+version: '3.8'
+
+# Создаем сетб
+networks:
+  # Указываем наименование сети
+  backend-application:
+    # Указываем тип сети
+    driver: bridge
+
+# Создаем контейнеры
+services:
+  api-gateway:
+    # Путь к папке, где лежит Dockerfile
+    build: ./api-gateway
+    # Имя контейнера
+    container_name: apigateway
+    # Пробрасываем порт
+    ports: 
+      - "8080:80"
+    # Синхронизация кода
+    volumes: 
+      - ./api-gateway:/app
+    networks: 
+      - backend-application
+  
+  user-microservice:
+    build: ./user-microservice
+    container_name: user-microservice
+    ports:
+      - "8081:81"
+    volumes:
+      - ./user-microservice:/app
+    networks:
+      - backend-application
+
+  room-microservice:
+    build: ./room-microservice
+    container_name: room-microservice
+    ports:
+      - "8082:81"
+    volumes:
+      - ./room-microservice:/app
+    networks:
+      - backend-application
+
+  postgresql-users:
+    image: postgres:18.2-alpine3.23
+    container_name: postgresql-users
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1111"
+      POSTGRES_DB: db_users
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./postgresql-users:/var/lib/postgresql
+    networks:
+      - backend-application
+
+  postgresql-rooms:
+    image: postgres:18.2-alpine3.23
+    container_name: postgresql-rooms
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1111"
+      POSTGRES_DB: db_rooms
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgresql-rooms:/var/lib/postgresql
+    networks:
+      - backend-application
+
+  redis-cache:
+    image: redis:8.6.0-alpine3.23
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    networks:
+      - backend-application
+    # volumes:
+    #   - ./redis-data:/data # Чтобы задачи не пропали при перезагрузке контейнера
+    # command: ["redis-server", "--appendonly", "yes"] # Включаем сохранение данных на диск
