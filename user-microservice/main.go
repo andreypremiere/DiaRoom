@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 	"user-microservice/models"
 	"user-microservice/repositories"
 	"user-microservice/services"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/andreypremiere/jwtmanager"
 )
 
 // App объединяет все зависимости нашего приложения
@@ -41,7 +43,9 @@ func (a *App) newUser(w http.ResponseWriter, r *http.Request) {
 
 	// Создаем экземпляр пользователя для регистрации
 	var newUser = models.RegisterUser{}
-	err := json.NewDecoder(r.Body).Decode(&newUser)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(&newUser)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -65,7 +69,7 @@ func (a *App) newUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": newId})
 }
 
-func (a *App) verifyUser(w http.ResponseWriter, r *http.Request) {
+func (a *App) verifyUserById(w http.ResponseWriter, r *http.Request) {
 	// Проверка на тип запроса
 	if r.Method != http.MethodPost {
 		w.Header().Set("Content-Type", "application/json")
@@ -82,7 +86,7 @@ func (a *App) verifyUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userVerify := models.VerifyUser{}
+	userVerify := models.VerifyUserById{}
 	err := json.NewDecoder(r.Body).Decode(&userVerify)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -91,22 +95,33 @@ func (a *App) verifyUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwtToken, err := a.userService.VerifyCode(r.Context(), userVerify)
-	if err != nil {
+	_, err2 := a.userService.VerifyCode(r.Context(), userVerify)
+	if err2 != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка на стороне сервера"})
 		return
 	}
 
+	jwtmanager := jwtmanager.NewJWTManager("1111", 2*time.Minute)
+	token, err := jwtmanager.Generate(userVerify.UserId.String(), "user")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка создания токена"})
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"jwt": jwtToken})
+	json.NewEncoder(w).Encode(map[string]string{"jwt": token})
 }
 
 func main() {
 	// Создание базового контекста
 	ctx := context.Background()
+
+	// Перенести функции инициализации базы данных в database-clients.go
 
 	// Создание пула соединений для базы данных postgres
 	connString := "postgres://postgres:1111@postgresql-users:5432/db_users"
@@ -136,7 +151,7 @@ func main() {
 
 	// Регистрируем маршруты
 	http.HandleFunc("/newUser", app.newUser)
-	http.HandleFunc("/verifyUser", app.verifyUser)
+	http.HandleFunc("/verifyUser", app.verifyUserById)
 
 	// Запускаем сервер
 	fmt.Println("Сервер запущен на :81")

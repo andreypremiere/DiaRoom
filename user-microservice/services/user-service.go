@@ -19,7 +19,7 @@ import (
 
 type UserServiceInter interface {
 	AddUser(ctx context.Context, user *models.RegisterUser) (uuid.UUID, error)
-	VerifyCode(ctx context.Context, verifyUser models.VerifyUser) (string, error)
+	VerifyCode(ctx context.Context, verifyUser models.VerifyUserById) (string, error)
 }
 
 type userService struct {
@@ -30,6 +30,9 @@ type userService struct {
 func (us userService) AddUser(ctx context.Context, user *models.RegisterUser) (uuid.UUID, error) {
 	newUUID := uuid.New()
 
+	if user.Id != uuid.Nil {
+		newUUID = user.Id
+	}
 	// Проверка полей на пустые значения (для user)
 	if user.NumberPhone == "" {
 		return uuid.Nil, errors.New("NumberPhone cannot be empty")
@@ -117,7 +120,7 @@ func (us *userService) AddCodeWithTimeout(ctx context.Context, userId uuid.UUID,
 	return err
 }
 
-func (us *userService) VerifyCode(ctx context.Context, verifyUser models.VerifyUser) (string, error) {
+func (us *userService) VerifyCode(ctx context.Context, verifyUser models.VerifyUserById) (string, error) {
 	gotCode, err := us.userRepo.GetValueByKey(ctx, verifyUser.UserId)
 	fmt.Println("Полученный код", gotCode)
 	if err != nil {
