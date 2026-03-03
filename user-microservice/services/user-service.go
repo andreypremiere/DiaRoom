@@ -20,6 +20,7 @@ import (
 type UserServiceInter interface {
 	AddUser(ctx context.Context, user *models.RegisterUser) (uuid.UUID, error)
 	VerifyCode(ctx context.Context, verifyUser models.VerifyUserById) (string, error)
+	LoginUser(ctx context.Context, value string) (error, uuid.UUID)
 }
 
 type userService struct {
@@ -33,13 +34,18 @@ func (us userService) AddUser(ctx context.Context, user *models.RegisterUser) (u
 	if user.Id != uuid.Nil {
 		newUUID = user.Id
 	}
+
 	// Проверка полей на пустые значения (для user)
+	if user.RoomId == "" {
+		return uuid.Nil, errors.New("Room Id cannot be empty")
+	}
+
 	if user.NumberPhone == "" {
 		return uuid.Nil, errors.New("NumberPhone cannot be empty")
 	}
 
 	// Добавляем пользователя в базу данных через репозиторий
-	err := us.userRepo.AddUser(ctx, newUUID, user.NumberPhone)
+	err := us.userRepo.AddUser(ctx, newUUID, user.NumberPhone, user.RoomId)
 	if err != nil {
 		fmt.Println("Ошибка добавления пользователя в базу данных", err)
 		return uuid.Nil, err
@@ -88,20 +94,7 @@ func (us userService) AddUser(ctx context.Context, user *models.RegisterUser) (u
 		return uuid.Nil, errors.New("Микросервис вернул плохой статус код")
     } 
 
-	// Генерируем код
-	code, err := utils.GenerateCode()
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	// Кладем код в базу данных Redis
-	err = us.AddCodeWithTimeout(ctx, newUUID, code)
-	if err != nil {
-		return uuid.Nil, err
-	}
-
-	// Отправляем код
-	err = us.smsProvider.SendCode(user.NumberPhone, code)
+	err = us.GenerateAndSendCode(ctx, newUUID, user.NumberPhone)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -136,6 +129,50 @@ func (us *userService) VerifyCode(ctx context.Context, verifyUser models.VerifyU
 	// Генерация токена
 
 	return "someToken", nil
+}
+
+func (us *userService) LoginUser(ctx context.Context, value string) (error, uuid.UUID) {
+	err, user := us.FindUserByPhoneOrRoomId(ctx, value)
+
+	if err != nil {
+		return err, uuid.Nil
+	}
+
+	err = us.GenerateAndSendCode(ctx, user.Id, user.NumberPhone)
+	if err != nil {
+		return err, uuid.Nil
+	}
+
+	return nil, user.Id
+}
+
+func (us *userService) FindUserByPhoneOrRoomId(ctx context.Context, value string) (error, *models.BaseUser) {
+	err, user := us.userRepo.FindUserByPhoneOrRoomId(ctx, value)
+	if err != nil {
+		return err, nil
+	}
+	return nil, user
+}
+
+func (us *userService) GenerateAndSendCode(ctx context.Context, userId uuid.UUID, numberPhone string) error {
+	code, err := utils.GenerateCode()
+	if err != nil {
+		return err
+	}
+
+	// Кладем код в базу данных Redis
+	err = us.AddCodeWithTimeout(ctx, userId, code)
+	if err != nil {
+		return err
+	}
+
+	// Отправляем код
+	err = us.smsProvider.SendCode(numberPhone, code)
+	if err != nil {
+		return  err
+	}
+
+	return nil
 }
 
 func NewUserService(userRepo repositories.UserRepositoryInter, smsProvider utils.SmsProvider) *userService {

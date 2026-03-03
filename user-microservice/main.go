@@ -117,6 +117,46 @@ func (a *App) verifyUserById(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"jwt": token})
 }
 
+func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
+	// Проверка на тип запроса
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Эндпоинт поддерживает только POST запросы"})
+		return
+	}
+
+	// Проверка на тип данных тела запроса
+	if r.Header.Get("Content-Type") != "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Тип данных не поддерживается"})
+		return
+	}
+
+	var input struct {Value string `json:"value"`}
+
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка при сериализации данных с клиента"})
+		return
+	}
+
+	err, userId := a.userService.LoginUser(r.Context(), input.Value)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка при выполнении запроса"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]uuid.UUID{"userId": userId})
+}
+
 func main() {
 	// Создание базового контекста
 	ctx := context.Background()
@@ -152,6 +192,7 @@ func main() {
 	// Регистрируем маршруты
 	http.HandleFunc("/newUser", app.newUser)
 	http.HandleFunc("/verifyUser", app.verifyUserById)
+	http.HandleFunc("/login", app.LoginUser)
 
 	// Запускаем сервер
 	fmt.Println("Сервер запущен на :81")

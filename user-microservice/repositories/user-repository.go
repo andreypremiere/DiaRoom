@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"time"
+	"user-microservice/models"
 
 	// "fmt"
 
@@ -12,10 +13,11 @@ import (
 )
 
 type UserRepositoryInter interface {
-	AddUser(ctx context.Context, id uuid.UUID, numberPhone string) error
+	AddUser(ctx context.Context, id uuid.UUID, numberPhone string, roomId string) error
 	DeleteUserById(criticalCtx context.Context, userId uuid.UUID) error
 	AddCodeWithTimeout(ctx context.Context, userId uuid.UUID, code string) error
 	GetValueByKey(ctx context.Context, userId uuid.UUID) (string, error)
+	FindUserByPhoneOrRoomId(ctx context.Context, value string) (error, *models.BaseUser)
 }
 
 type userRepository struct {
@@ -23,9 +25,9 @@ type userRepository struct {
 	rdb *redis.Client
 }
 
-func (ur *userRepository) AddUser(ctx context.Context, id uuid.UUID, numberPhone string) error {
-	sqlInsert := "INSERT INTO users (id, phone) VALUES ($1, $2)"
-	_, err := ur.db.Exec(ctx, sqlInsert, id, numberPhone)
+func (ur *userRepository) AddUser(ctx context.Context, id uuid.UUID, numberPhone string, roomId string) error {
+	sqlInsert := "INSERT INTO users (id, phone, room_name_id) VALUES ($1, $2, $3)"
+	_, err := ur.db.Exec(ctx, sqlInsert, id, numberPhone, roomId)
 	return err
 }
 
@@ -45,6 +47,19 @@ func (ur *userRepository) GetValueByKey(ctx context.Context, userId uuid.UUID) (
 	result := ur.rdb.Get(ctx, userId.String())
 	
 	return result.Val(), result.Err()
+}
+
+func (ur *userRepository) FindUserByPhoneOrRoomId(ctx context.Context, value string) (error, *models.BaseUser) {
+	query := "SELECT id, phone, room_name_id FROM users WHERE phone = $1 OR room_name_id = $1"
+
+	foundUser := models.BaseUser{}
+
+	err := ur.db.QueryRow(ctx, query, value).Scan(&foundUser.Id, &foundUser.NumberPhone, &foundUser.RoomId)
+	if err != nil {
+		return err, nil
+	}
+
+	return nil, &foundUser
 }
 
 func NewUserRepository(dbConnection *pgxpool.Pool, rdb *redis.Client) *userRepository {

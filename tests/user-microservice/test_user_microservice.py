@@ -4,6 +4,7 @@ import redis
 
 CONST_UUID = "2d0ed77e-81e1-4b71-b59d-27e60107e49a"
 
+
 @pytest.mark.parametrize("payload, expected_status, expected_value", [
     # 1. Позитивный сценарий
     ({"id": CONST_UUID, "numberPhone": "+79233283528", "roomId": "unique_room Id", "roomName": "My room Name"},
@@ -26,7 +27,7 @@ CONST_UUID = "2d0ed77e-81e1-4b71-b59d-27e60107e49a"
 ])
 def test_register(auth_url, payload, expected_status, expected_value):
     # 1. Отправляем запрос
-    response = requests.post(f"{auth_url}/newUser", json=payload)
+    response = requests.post(f"{auth_url}/auth/newUser", json=payload)
 
     # 2. Проверяем статус-код
     assert response.status_code == expected_status
@@ -60,6 +61,28 @@ def get_code_from_db(user_id):
     return code
 
 
+@pytest.mark.parametrize("value, expected_status, expected_value",
+                         [
+                             ('+79233283528', 200, "userId"),
+                             ('unique_room Id', 200, "userId"),
+                             ('unique_room ', 400, "error"),
+                         ])
+def test_login_user(auth_url, value, expected_status, expected_value):
+    response = requests.post(f"{auth_url}/auth/login", json={"value": value})
+
+    # 2. Проверяем статус-код
+    assert response.status_code == expected_status
+
+    # 3. Проверяем тип данных (Content-Type)
+    assert response.headers["Content-Type"] == "application/json"
+
+    data = response.json()
+
+    # 4. Проверяем наличие и тип параметров в JSON
+    assert expected_value in data
+    assert data[expected_value] != ""
+
+
 @pytest.mark.parametrize("payload, code_type, expected_status, expected_value, wrong_code", [
     ({"userId": CONST_UUID}, '', 200, "jwt", False),
     ({"userId": CONST_UUID}, '', 400, "error", True),
@@ -75,7 +98,7 @@ def test_verify_user_by_id(auth_url, payload, code_type, expected_status, expect
 
     assert type(code) == type(code_type)
     # 1. Отправляем запрос
-    response = requests.post(f"{auth_url}/verifyUser", json=payload)
+    response = requests.post(f"{auth_url}/auth/verifyUser", json=payload)
 
     # 2. Проверяем статус-код
     assert response.status_code == expected_status
@@ -88,4 +111,3 @@ def test_verify_user_by_id(auth_url, payload, code_type, expected_status, expect
     # 4. Проверяем наличие и тип параметров в JSON
     assert expected_value in data
     assert data[expected_value] != ""
-
