@@ -1,47 +1,51 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
 )
 
-type User struct {
-	id int
-	code int
-	hash string
+type ProxyHandler struct {
+	targets map[string]*httputil.ReverseProxy
 }
 
-func mainPage(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
+func NewProxyHandler() *ProxyHandler {
+	return &ProxyHandler{targets: make(map[string]*httputil.ReverseProxy)}
+}
+
+func (p *ProxyHandler) AddRoute(prefix string, targetAddress string) {
+	target, _ := url.Parse(targetAddress)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	originalDirector := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		originalDirector(r)
+		r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
+		r.Header.Set("X-Gateway-Auth", "trusted")
 	}
 
-	fmt.Println("Пришел запрос на главную страницу")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"Статус": "Запрос был обработан"}`))
+	p.targets[prefix] = proxy
 }
 
-func setValueRedis(w http.ResponseWriter, r *http.Request) {
-
-}
-
-func pingUserMicroservice(w http.ResponseWriter, r *http.Request) {
-	userServiceURL := "http://user-microservice:81"
-
-	_, err := http.Get(userServiceURL)
-
-	if err == nil {
-		fmt.Println("Запрос в микросервис юзера успешно выполнен")
-	} else {
-		fmt.Println("Ошибка:", err.Error())
+func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	for prefix, proxy := range p.targets {
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			log.Printf("Маршрутизация: %s -> %s: ", r.URL.Path, prefix)
+			proxy.ServeHTTP(w, r)
+			return 
+		}
 	}
+
+	http.Error(w, "Сервис не найден", http.StatusNotFound)
 }
 
 func main() {
-	http.HandleFunc("/", mainPage)
-	http.HandleFunc("/pingUserService", pingUserMicroservice)
-	http.HandleFunc("/setRedisValue", setValueRedis)
-	http.ListenAndServe(":80", nil)
+	gateway := NewProxyHandler()
+
+	gateway.AddRoute("/auth", "http://user-microservice:81")
+	gateway.AddRoute("/rooms", "http://room-microservice:81")
+	http.ListenAndServe(":80", gateway)
 }
