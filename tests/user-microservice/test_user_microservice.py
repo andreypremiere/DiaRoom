@@ -84,7 +84,7 @@ def test_login_user(auth_url, value, expected_status, expected_value):
 
 
 @pytest.mark.parametrize("payload, code_type, expected_status, expected_value, wrong_code", [
-    ({"userId": CONST_UUID}, '', 200, "jwt", False),
+    ({"userId": CONST_UUID}, '', 200, "token", False),
     ({"userId": CONST_UUID}, '', 400, "error", True),
     ({"userId": "ljflsjif-flkjwf-jlfjs"}, None, 400, "error", False)
 ])

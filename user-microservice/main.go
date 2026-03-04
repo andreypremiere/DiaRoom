@@ -103,8 +103,8 @@ func (a *App) verifyUserById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwtmanager := jwtmanager.NewJWTManager("1111", 2*time.Minute)
-	token, err := jwtmanager.Generate(userVerify.UserId.String(), "user")
+	jwtmanager := jwtmanager.NewJWTManager("1111", 30*time.Minute)
+	token, err := jwtmanager.Generate(userVerify.UserId.String())
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -114,7 +114,7 @@ func (a *App) verifyUserById(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"jwt": token})
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
 func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
