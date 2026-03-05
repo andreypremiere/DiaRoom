@@ -1,5 +1,6 @@
 postgresql-rooms/
 postgresql-users/
+postgresql-posts/
 
 go.sum
 .idea/

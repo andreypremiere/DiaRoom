@@ -1,32 +1,71 @@
+-- 1. Таблица комнат
 CREATE TABLE IF NOT EXISTS rooms (
-    -- Основной ID записи
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    
-    -- Ссылка на пользователя (UUID), который владеет комнатой или привязан к ней
     user_id UUID NOT NULL,
     
-    -- Названия
     room_name VARCHAR(100) NOT NULL,
-    room_name_id VARCHAR(70) NOT NULL UNIQUE, -- Уникальный короткий адрес (например, @my_room)
+    room_name_id VARCHAR(70) NOT NULL UNIQUE, 
     
-    -- Контент
     avatar_url TEXT,
     bio TEXT,
     
-    -- ID настроения (можно потом сделать отдельную таблицу, пока просто UUID или INT)
-    mood_id UUID,
+    settings JSONB NOT NULL DEFAULT '{}',
     
-    -- Сложные типы данных
-    hashtags JSONB DEFAULT '[]',   -- Список тегов, например: ["go", "docker", "web"]
-    settings JSONB DEFAULT '{}',   -- Настройки комнаты: {"private": true, "theme": "dark"}
-    
-    -- Счетчики (обязательно NOT NULL и дефолт 0)
     followers_count INT NOT NULL DEFAULT 0,
     following_count INT NOT NULL DEFAULT 0,
     
-    -- Время создания
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Индекс для быстрого поиска по room_id_name (например, для поиска через @название)
-CREATE INDEX IF NOT EXISTS idx_room_id_name ON rooms(room_name_id);
+CREATE INDEX IF NOT EXISTS idx_room_name_id ON rooms(room_name_id);
+
+-- 2. Таблица категорий
+CREATE TABLE IF NOT EXISTS categories (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(50) NOT NULL UNIQUE, 
+    name VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Связующая таблица (Исправленная)
+CREATE TABLE IF NOT EXISTS room_categories (
+    room_id UUID NOT NULL,
+    category_id INTEGER NOT NULL,
+    
+    PRIMARY KEY (room_id, category_id),
+    
+    CONSTRAINT fk_room 
+        FOREIGN KEY (room_id) 
+        REFERENCES rooms(id) 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_category 
+        FOREIGN KEY (category_id) 
+        REFERENCES categories(id) 
+        ON DELETE CASCADE
+);
+
+-- Индекс для обратного поиска (найти все комнаты в категории)
+CREATE INDEX IF NOT EXISTS idx_room_categories_cat_id ON room_categories(category_id);
+
+INSERT INTO categories (slug, name)
+VALUES 
+    ('visual-arts', 'Арт и Иллюстрация'),
+    ('traditional-art', 'Живопись и Рисование'),
+    ('photography', 'Фотография'),
+    ('3d-modeling', '3D Моделирование'),
+    ('graphic-design', 'Графический дизайн'),
+    ('video-production', 'Видеопроизводство'),
+    ('motion-design', 'Моушн дизайн'),
+    ('animation', 'Анимация'),
+    ('music', 'Музыка'),
+    ('sound-design', 'Саунд-дизайн'),
+    ('podcasts', 'Подкасты'),
+    ('literature', 'Литература и Статьи'),
+    ('gamedev', 'Игры'),
+    ('it-tech', 'Код и Технологии'),
+    ('fashion', 'Мода и Стиль'),
+    ('architecture-interior', 'Архитектура и Интерьер'),
+    ('craft-diy', 'Крафт и DIY'),
+    ('lifestyle-blog', 'Жизнь и Блог')
+ON CONFLICT (slug) 
+DO UPDATE SET name = EXCLUDED.name;

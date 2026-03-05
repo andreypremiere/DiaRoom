@@ -16,14 +16,14 @@ services:
     # Имя контейнера
     container_name: apigateway
     # Пробрасываем порт
-    ports: 
+    ports:
       - "8080:80"
     # Синхронизация кода
-    volumes: 
+    volumes:
       - ./api-gateway:/app
-    networks: 
+    networks:
       - backend-application
-  
+
   user-microservice:
     build: ./user-microservice
     container_name: user-microservice
@@ -69,6 +69,20 @@ services:
       - "5433:5432"
     volumes:
       - ./postgresql-rooms:/var/lib/postgresql
+    networks:
+      - backend-application
+
+  postgresql-posts:
+    image: postgres:18.2-alpine3.23
+    container_name: postgresql-posts
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1111"
+      POSTGRES_DB: db_posts
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./postgresql-posts:/var/lib/postgresql
     networks:
       - backend-application
 
