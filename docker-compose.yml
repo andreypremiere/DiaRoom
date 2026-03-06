@@ -27,6 +27,8 @@ services:
   user-microservice:
     build: ./user-microservice
     container_name: user-microservice
+    env_file:
+      - .env
     ports:
       - "8081:81"
     volumes:

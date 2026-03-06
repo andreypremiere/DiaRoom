@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 	"user-microservice/models"
 	"user-microservice/repositories"
 	"user-microservice/services"
@@ -14,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"github.com/andreypremiere/jwtmanager"
 )
 
 // App объединяет все зависимости нашего приложения
@@ -95,20 +93,11 @@ func (a *App) verifyUserById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err2 := a.userService.VerifyCode(r.Context(), userVerify)
+	token, err2 := a.userService.VerifyCode(r.Context(), userVerify)
 	if err2 != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка на стороне сервера"})
-		return
-	}
-
-	jwtmanager := jwtmanager.NewJWTManager("1111", 30*time.Minute)
-	token, err := jwtmanager.Generate(userVerify.UserId.String())
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка создания токена"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка на стороне сервера" + err2.Error()})
 		return
 	}
 

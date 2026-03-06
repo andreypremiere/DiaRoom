@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	// "fmt"
@@ -14,6 +15,7 @@ import (
 	"user-microservice/repositories"
 	"user-microservice/utils"
 
+	"github.com/andreypremiere/jwtmanager"
 	"github.com/google/uuid"
 )
 
@@ -121,15 +123,27 @@ func (us *userService) VerifyCode(ctx context.Context, verifyUser models.VerifyU
 	}
 
 	if gotCode != verifyUser.Code {
-		return "", errors.New("Введенный код не совпадает с полученным")
+		return "", errors.Join(errors.New("Введенный код не совпадает с полученным"), err)
 	}
 
 	// Запрос необходимых данных о комнате (если нужно)
+	roomId, err := GetRoomIdByUserId(verifyUser.UserId)
+	if err != nil {
+		return "", errors.Join(errors.New("Не удалось получить комнату"), err)
+	}
+
+	secretJwt := os.Getenv("JWT_SECRET")
 
 	// Генерация токена
+	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 30*time.Minute)
+	token, err := jwtmanager.Generate(verifyUser.UserId.String(), roomId.String())
+	if err != nil {
+		return "", errors.Join(errors.New("Ошибка при генерации токена"), err)
+	}
 
-	return "someToken", nil
+	return token, nil
 }
+
 
 func (us *userService) LoginUser(ctx context.Context, value string) (error, uuid.UUID) {
 	err, user := us.FindUserByPhoneOrRoomId(ctx, value)

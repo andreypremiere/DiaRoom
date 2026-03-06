@@ -3,7 +3,7 @@ module user-microservice
 go 1.25.7
 
 require (
-	github.com/andreypremiere/jwtmanager v1.0.2
+	github.com/andreypremiere/jwtmanager v1.0.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/redis/go-redis/v9 v9.18.0

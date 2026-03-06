@@ -5,3 +5,4 @@ postgresql-posts/
 go.sum
 .idea/
 .pytest_cache/
+.env
