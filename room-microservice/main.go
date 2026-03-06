@@ -85,7 +85,7 @@ func (a *App) getRoomIdByUserId(w http.ResponseWriter, r *http.Request) {
 	roomId, err := a.roomService.GetRoomIdByUserId(r.Context(), userId.UserId)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(410)
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка на стороне сервера" + err.Error()})
 		return
 	}
@@ -93,6 +93,45 @@ func (a *App) getRoomIdByUserId(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]uuid.UUID{"roomId": roomId})
+}
+
+func (a *App) getRoomByRoomId(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Данный метод поддерживает только POST запросы"})
+		return
+	}
+
+	// Проверка на тип данных тела запроса
+	if r.Header.Get("Content-Type") != "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Тип данных не поддерживается"})
+		return
+	}
+
+	var roomId struct {RoomId uuid.UUID `json:"roomId"`}
+
+	err := json.NewDecoder(r.Body).Decode(&roomId)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка преобразования тела запроса"})
+		return
+	}
+
+	room, err := a.roomService.GetRoomByRoomId(r.Context(), roomId.RoomId)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка на стороне сервера" + err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(room)
 }
 
 func main() {
@@ -112,6 +151,7 @@ func main() {
 	
 	http.HandleFunc("/newRoom", app.newRoom)
 	http.HandleFunc("/getRoomIdByUserId", app.getRoomIdByUserId)
+	http.HandleFunc("/getRoomByRoomId", app.getRoomByRoomId)
 
 	http.ListenAndServe(":81", nil)
 }
