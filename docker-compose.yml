@@ -15,6 +15,8 @@ services:
     build: ./api-gateway
     # Имя контейнера
     container_name: apigateway
+    env_file:
+      - .env
     # Пробрасываем порт
     ports:
       - "8080:80"
