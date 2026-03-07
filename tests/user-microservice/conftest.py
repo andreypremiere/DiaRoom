@@ -3,7 +3,7 @@ import psycopg2
 
 
 @pytest.fixture
-def auth_url():
+def base_url():
     return "http://localhost:8080"
 
 # function	Выполняется после каждого отдельного теста (функции). Самый чистый, но медленный способ.
