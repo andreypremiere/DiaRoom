@@ -1,4 +1,4 @@
--- 1. Справочник категорий
+-- Справочник категорий
 CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,
     slug VARCHAR(50) NOT NULL UNIQUE, 
@@ -6,14 +6,14 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Таблица холстов (Canvases)
+-- Таблица холстов (Canvases)
 CREATE TABLE IF NOT EXISTS canvases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     payload JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Основная таблица постов
+-- Основная таблица постов
 CREATE TABLE IF NOT EXISTS posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id UUID NOT NULL,
@@ -28,12 +28,11 @@ CREATE TABLE IF NOT EXISTS posts (
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    -- Внешние ключи
     CONSTRAINT fk_post_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT,
     CONSTRAINT fk_post_canvas   FOREIGN KEY (canvas_id)   REFERENCES canvases(id)   ON DELETE CASCADE
 );
 
--- 4. Хештеги
+-- Хештеги
 CREATE TABLE IF NOT EXISTS hashtags (
     id SERIAL PRIMARY KEY,
     name VARCHAR(80) NOT NULL UNIQUE,
@@ -41,7 +40,7 @@ CREATE TABLE IF NOT EXISTS hashtags (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Связи Постов и Хештегов
+-- Связи Постов и Хештегов
 CREATE TABLE IF NOT EXISTS posts_hashtags (
     post_id UUID NOT NULL,
     hashtag_id INTEGER NOT NULL,

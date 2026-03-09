@@ -1,4 +1,4 @@
--- 1. Таблица комнат
+-- Таблица комнат
 CREATE TABLE IF NOT EXISTS rooms (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS rooms (
 
 CREATE INDEX IF NOT EXISTS idx_room_name_id ON rooms(room_name_id);
 
--- 2. Таблица категорий
+-- Таблица категорий
 CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,
     slug VARCHAR(50) NOT NULL UNIQUE, 
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Связующая таблица (Исправленная)
+-- Связующая таблица (Исправленная)
 CREATE TABLE IF NOT EXISTS room_categories (
     room_id UUID NOT NULL,
     category_id INTEGER NOT NULL,

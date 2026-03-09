@@ -1,5 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Таблица пользователя
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     phone VARCHAR(15) NOT NULL UNIQUE,
