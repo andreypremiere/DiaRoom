@@ -5,7 +5,6 @@ FROM golang:1.25.7-alpine3.23
 WORKDIR /app
 
 COPY ./go.mod .
-# COPY go.sum .  <-- Раскомментируй, когда файл появится
 
 # Сборка зависимостей (в данном случае скачиваем необходимые зависимости из файла go.mod)
 RUN go mod download
