@@ -13,6 +13,7 @@ type BaseRoom struct {
 	RoomNameId string `json:"roomNameId"`
 }
 
+// Используется для загрузки страницы комнаты и получения полных данных о комнате
 type RoomExpanded struct {
 	BaseRoom
 	Categories []Category `json:"categories"`
