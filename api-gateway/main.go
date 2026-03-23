@@ -65,6 +65,7 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+				// т.к. библиотека принимает только токен, то очищаем от приставки
 				tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 				// Валидация JWT токена
@@ -96,5 +97,6 @@ func main() {
 	// Регистрация маршрутов для микросервисов
 	gateway.AddRoute("/auth", "http://user-microservice:81", []string{})
 	gateway.AddRoute("/rooms", "http://room-microservice:81", []string{"/rooms/getRoomByRoomId"})
+	gateway.AddRoute("/post", "http://post-microservice:81", []string{"/post/getPresignedUrls", "/post/createPost", "/post/publishPost"})
 	http.ListenAndServe(":80", gateway)
 }

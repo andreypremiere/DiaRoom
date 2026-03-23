@@ -139,7 +139,7 @@ func (us *userService) VerifyCode(ctx context.Context, verifyUser models.VerifyU
 	secretJwt := os.Getenv("JWT_SECRET")
 
 	// Формирование JWT для авторизации в Gateway
-	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 30*time.Minute)
+	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 540*time.Minute)
 	token, err := jwtmanager.Generate(verifyUser.UserId.String(), roomId.String())
 	if err != nil {
 		return "", errors.Join(errors.New("Ошибка при генерации токена"), err)

@@ -26,6 +26,22 @@ services:
     networks:
       - backend-application
 
+  post-microservice:
+    # Путь к папке, где лежит Dockerfile
+    build: ./post-microservice
+    # Имя контейнера
+    container_name: post-microservice
+    env_file:
+      - .env
+    # Пробрасываем порт
+    ports:
+      - "8083:81"
+    # Синхронизация кода
+    volumes:
+      - ./post-microservice:/app
+    networks:
+      - backend-application
+
   user-microservice:
     build: ./user-microservice
     container_name: user-microservice
