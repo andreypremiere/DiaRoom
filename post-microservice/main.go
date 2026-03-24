@@ -26,54 +26,54 @@ type App struct {
 
 }
 
-// newRoom обрабатывает HTTP-запрос на создание новой комнаты
-func (a *App) getPresignedUrls(w http.ResponseWriter, r *http.Request) {
-	// Проверка разрешенного HTTP метода
-	if r.Method != http.MethodPost {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Данный метод поддерживает только POST запросы"})
-		return
-	}
+// // newRoom обрабатывает HTTP-запрос на создание новой комнаты
+// func (a *App) getPresignedUrls(w http.ResponseWriter, r *http.Request) {
+// 	// Проверка разрешенного HTTP метода
+// 	if r.Method != http.MethodPost {
+// 		w.Header().Set("Content-Type", "application/json")
+// 		w.WriteHeader(http.StatusMethodNotAllowed)
+// 		json.NewEncoder(w).Encode(map[string]string{"error": "Данный метод поддерживает только POST запросы"})
+// 		return
+// 	}
 
-	// Валидация заголовка типа контента	
-	if r.Header.Get("Content-Type") != "application/json" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnsupportedMediaType)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Тип данных не поддерживается"})
-		return
-	}
+// 	// Валидация заголовка типа контента	
+// 	if r.Header.Get("Content-Type") != "application/json" {
+// 		w.Header().Set("Content-Type", "application/json")
+// 		w.WriteHeader(http.StatusUnsupportedMediaType)
+// 		json.NewEncoder(w).Encode(map[string]string{"error": "Тип данных не поддерживается"})
+// 		return
+// 	}
 
-    roomID := r.Header.Get("X-Room-ID")
+//     roomID := r.Header.Get("X-Room-ID")
 
-	var req models.PresignedRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, `{"error": "Ошибка чтения JSON"}`, http.StatusBadRequest)
-		return
-	}
+// 	var req models.PresignedRequest
+// 	err := json.NewDecoder(r.Body).Decode(&req)
+// 	if err != nil {
+// 		http.Error(w, `{"error": "Ошибка чтения JSON"}`, http.StatusBadRequest)
+// 		return
+// 	}
 
-	fmt.Println("Принятный из заголовока RoomId:" + roomID)
+// 	fmt.Println("Принятный из заголовока RoomId:" + roomID)
 
-	spew.Dump(req)
+// 	spew.Dump(req)
 	
-	resp, err := a.service.GetPresignedUrls(r.Context(), &req, roomID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
+// 	resp, err := a.service.GetPresignedUrls(r.Context(), &req, roomID)
+// 	if err != nil {
+// 		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)
+// 		return
+// 	}
 
-	spew.Dump(resp)
+// 	spew.Dump(resp)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+// 	w.Header().Set("Content-Type", "application/json")
+// 	w.WriteHeader(http.StatusOK)
+// 	json.NewEncoder(w).Encode(resp)
 
-}
+// }
 
 func (h *App) CreatePost(w http.ResponseWriter, r *http.Request) {
-    var req models.CreatePostRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+    var post models.CreatePostRequest
+    if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
         http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
         return
     }
@@ -82,62 +82,57 @@ func (h *App) CreatePost(w http.ResponseWriter, r *http.Request) {
 
 	roomID, err := uuid.Parse(roomIDStr)
     if err != nil {
-        // Если пришла невалидная строка (например, "null" или просто текст)
         http.Error(w, "Invalid Room ID format", http.StatusBadRequest)
         return
     }
 
-	req.RoomID = roomID
+	post.Post.RoomID = roomID  // Задаем roomId из заголовка
 
-	spew.Dump(req)
+	fmt.Println("roomdId при создании поста: ", roomID)
+	spew.Dump("CreatePostRequest при создании поста", post)
 
-
-    postID, err := h.service.CreatePost(r.Context(), req)
+    result, err := h.service.CreatePost(r.Context(), post)
     if err != nil {
 		http.Error(w, `{"error": "Ошибка при создании"}`, http.StatusBadRequest)
         return
     }
 
     w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusCreated)
-    json.NewEncoder(w).Encode(models.CreatePostResponse{
-        PostID: postID,
-        Status: "processing",
-    })
+    json.NewEncoder(w).Encode(result)
 }
 
-func (h *App) PublishPost(w http.ResponseWriter, r *http.Request) {
-	var req models.PublishPostRequest
+// func (h *App) PublishPost(w http.ResponseWriter, r *http.Request) {
+// 	var req models.PublishPostRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid JSON format"}`, http.StatusBadRequest)
-		return
-	}
+// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+// 		http.Error(w, `{"error": "Invalid JSON format"}`, http.StatusBadRequest)
+// 		return
+// 	}
 
-	// Базовая валидация
-	if req.PostID == uuid.Nil {
-		http.Error(w, `{"error": "postId is required"}`, http.StatusBadRequest)
-		return
-	}
-	if len(req.Payload) == 0 || string(req.Payload) == "null" {
-		http.Error(w, `{"error": "payload is required"}`, http.StatusBadRequest)
-		return
-	}
+// 	// Базовая валидация
+// 	if req.PostID == uuid.Nil {
+// 		http.Error(w, `{"error": "postId is required"}`, http.StatusBadRequest)
+// 		return
+// 	}
+// 	if len(req.Payload) == 0 || string(req.Payload) == "null" {
+// 		http.Error(w, `{"error": "payload is required"}`, http.StatusBadRequest)
+// 		return
+// 	}
 
-	// Передаем в сервис
-	err := h.service.PublishPost(r.Context(), req)
-	if err != nil {
-		http.Error(w, `{"error": "Failed to publish post"}`, http.StatusInternalServerError)
-		return
-	}
+// 	// Передаем в сервис
+// 	err := h.service.PublishPost(r.Context(), req)
+// 	if err != nil {
+// 		http.Error(w, `{"error": "Failed to publish post"}`, http.StatusInternalServerError)
+// 		return
+// 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(models.PublishPostResponse{
-		Message: "Post published successfully",
-		Status:  "published",
-	})
-}
+// 	w.Header().Set("Content-Type", "application/json")
+// 	w.WriteHeader(http.StatusOK)
+// 	json.NewEncoder(w).Encode(models.PublishPostResponse{
+// 		Message: "Post published successfully",
+// 		Status:  "published",
+// 	})
+// }
 
 
 func main() {
@@ -166,9 +161,9 @@ func main() {
 	app := App{service: service}
 	
 	// Регистрация маршрутов
-	http.HandleFunc("/getPresignedUrls", app.getPresignedUrls)
+	// http.HandleFunc("/getPresignedUrls", app.getPresignedUrls)
 	http.HandleFunc("/createPost", app.CreatePost)
-	http.HandleFunc("/publishPost", app.PublishPost)
+	// http.HandleFunc("/publishPost", app.PublishPost)
 
 
 	http.ListenAndServe(":81", nil)

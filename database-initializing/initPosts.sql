@@ -12,7 +12,7 @@ CREATE TYPE post_status AS ENUM (
 );
 
 CREATE TYPE ai_check_status AS ENUM (
-    'not_checked',
+    'notChecked',
     'checking',
     'passed',
     'warning',
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS posts (
 
     -- === Статусы ===
     status post_status NOT NULL DEFAULT 'processing',
-    ai_check_status ai_check_status NOT NULL DEFAULT 'not_checked',
+    ai_check_status ai_check_status NOT NULL DEFAULT 'notChecked',
     
     -- === Дополнительная информация ===
     title VARCHAR(160),
