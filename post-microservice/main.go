@@ -17,59 +17,14 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
+	"github.com/go-chi/chi"
 )
 
 // App содержит зависимости приложения, такие как сервисы бизнес-логики
 type App struct {
 	service services.PostServiceInter
-	// roomService services.RoomServiceInter
-
 }
 
-// // newRoom обрабатывает HTTP-запрос на создание новой комнаты
-// func (a *App) getPresignedUrls(w http.ResponseWriter, r *http.Request) {
-// 	// Проверка разрешенного HTTP метода
-// 	if r.Method != http.MethodPost {
-// 		w.Header().Set("Content-Type", "application/json")
-// 		w.WriteHeader(http.StatusMethodNotAllowed)
-// 		json.NewEncoder(w).Encode(map[string]string{"error": "Данный метод поддерживает только POST запросы"})
-// 		return
-// 	}
-
-// 	// Валидация заголовка типа контента	
-// 	if r.Header.Get("Content-Type") != "application/json" {
-// 		w.Header().Set("Content-Type", "application/json")
-// 		w.WriteHeader(http.StatusUnsupportedMediaType)
-// 		json.NewEncoder(w).Encode(map[string]string{"error": "Тип данных не поддерживается"})
-// 		return
-// 	}
-
-//     roomID := r.Header.Get("X-Room-ID")
-
-// 	var req models.PresignedRequest
-// 	err := json.NewDecoder(r.Body).Decode(&req)
-// 	if err != nil {
-// 		http.Error(w, `{"error": "Ошибка чтения JSON"}`, http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	fmt.Println("Принятный из заголовока RoomId:" + roomID)
-
-// 	spew.Dump(req)
-	
-// 	resp, err := a.service.GetPresignedUrls(r.Context(), &req, roomID)
-// 	if err != nil {
-// 		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	spew.Dump(resp)
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(http.StatusOK)
-// 	json.NewEncoder(w).Encode(resp)
-
-// }
 
 func (h *App) CreatePost(w http.ResponseWriter, r *http.Request) {
     var post models.CreatePostRequest
@@ -101,38 +56,69 @@ func (h *App) CreatePost(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(result)
 }
 
-// func (h *App) PublishPost(w http.ResponseWriter, r *http.Request) {
-// 	var req models.PublishPostRequest
+func (h *App) GetPresignedUrls(w http.ResponseWriter, r *http.Request) {
+	// 1. Получаем и валидируем RoomID из заголовка
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		http.Error(w, `{"error": "Missing X-Room-ID header"}`, http.StatusBadRequest)
+		return
+	}
 
-// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-// 		http.Error(w, `{"error": "Invalid JSON format"}`, http.StatusBadRequest)
-// 		return
-// 	}
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		http.Error(w, `{"error": "Invalid Room ID format"}`, http.StatusBadRequest)
+		return
+	}
 
-// 	// Базовая валидация
-// 	if req.PostID == uuid.Nil {
-// 		http.Error(w, `{"error": "postId is required"}`, http.StatusBadRequest)
-// 		return
-// 	}
-// 	if len(req.Payload) == 0 || string(req.Payload) == "null" {
-// 		http.Error(w, `{"error": "payload is required"}`, http.StatusBadRequest)
-// 		return
-// 	}
+	// 2. Декодируем тело запроса
+	var req models.GenerateUrlsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error": "Invalid JSON body"}`, http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
 
-// 	// Передаем в сервис
-// 	err := h.service.PublishPost(r.Context(), req)
-// 	if err != nil {
-// 		http.Error(w, `{"error": "Failed to publish post"}`, http.StatusInternalServerError)
-// 		return
-// 	}
+	// 3. Вызываем сервисный слой
+	result, err := h.service.GenerateMediaUrls(r.Context(), roomID, req)
+	if err != nil {
+		// Логируем реальную ошибку на сервере
+		fmt.Printf("Ошибка в GenerateMediaUrls: %v\n", err)
+		http.Error(w, `{"error": "Failed to generate presigned URLs"}`, http.StatusInternalServerError)
+		return
+	}
 
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(http.StatusOK)
-// 	json.NewEncoder(w).Encode(models.PublishPostResponse{
-// 		Message: "Post published successfully",
-// 		Status:  "published",
-// 	})
-// }
+	// 4. Отправляем успешный ответ клиенту
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
+}
+
+func (h *App) SaveCanvasHandler(w http.ResponseWriter, r *http.Request) {
+	// Достаем ID поста из URL (например, используем chi или gorilla/mux)
+	postIDStr := chi.URLParam(r, "postId")
+	postID, err := uuid.Parse(postIDStr)
+	if err != nil {
+		http.Error(w, "Invalid post ID", http.StatusBadRequest)
+		return
+	}
+
+	var req models.SaveCanvasRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Вызываем сервис
+	err = h.service.CreateAndAttachCanvas(r.Context(), postID, req.Payload)
+	if err != nil {
+		// В реальном проекте здесь стоит разделять ошибки (404, 500 и т.д.)
+		http.Error(w, "Failed to save canvas", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "success"}`))
+}
 
 
 func main() {
@@ -160,11 +146,15 @@ func main() {
 
 	app := App{service: service}
 	
-	// Регистрация маршрутов
-	// http.HandleFunc("/getPresignedUrls", app.getPresignedUrls)
-	http.HandleFunc("/createPost", app.CreatePost)
-	// http.HandleFunc("/publishPost", app.PublishPost)
+	r := chi.NewRouter()
 
+    // Обычные маршруты
+    r.Post("/createPost", app.CreatePost)
+    r.Post("/getPresignedUrls", app.GetPresignedUrls)
 
-	http.ListenAndServe(":81", nil)
+    // Маршрут с параметром {postId}
+    // Путь будет: /post/{postId}/canvas
+    r.Post("/{postId}/canvas", app.SaveCanvasHandler)
+
+    http.ListenAndServe(":81", r) // Передаем 'r' вместо 'nil'
 }

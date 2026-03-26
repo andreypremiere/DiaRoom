@@ -1,25 +1,26 @@
 package models
 
-type PresignedRequest struct {
-	Files []UploadFile `json:"files"`
-	PostId string `json:"postId"`
-	Preview PreviewRequest `json:"previewRequest"`
+import "github.com/google/uuid"
+
+// GenerateUrlsRequest — модель входящего запроса от Flutter
+type GenerateUrlsRequest struct {
+	PostID uuid.UUID    `json:"postId"`
+	Files  []UploadFile `json:"files"`
 }
 
 type UploadFile struct {
-	UploadID    string `json:"uploadId"`    // uuid с клиента
+	UploadID    uuid.UUID `json:"uploadId"`
 	Filename    string `json:"filename"`
 	ContentType string `json:"contentType"`
-	Size        int64  `json:"size,omitempty"`
 }
 
-type PresignedResponse struct {
-	Files []PresignedFile `json:"files"`
-	Preview PreviewResponse `json:"previewResponse"`
+// GenerateUrlsResponse — модель ответа сервера
+type GenerateUrlsResponse struct {
+	Files []GeneratedURL `json:"files"`
 }
 
-type PresignedFile struct {
-	UploadID     string `json:"uploadId"`
-	PresignedURL string `json:"presignedUrl"`
+type GeneratedURL struct {
+	UploadID     uuid.UUID `json:"uploadId"`
 	PublicURL    string `json:"publicUrl"`
+	PresignedURL string `json:"presignedUrl"`
 }

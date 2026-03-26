@@ -13,6 +13,7 @@ type PostRepositoryInter interface {
 	CreatePost(ctx context.Context, data models.CreatePostInternal) (uuid.UUID, error)
 	UpdatePostPreviewURL(ctx context.Context, postID uuid.UUID, previewURL string) error
 	AddHashtagsToPost(ctx context.Context, postID uuid.UUID, hashtags []string) error
+	InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error
 }
 
 type PostRepository struct {
@@ -110,6 +111,45 @@ func (r *PostRepository) AddHashtagsToPost(ctx context.Context, postID uuid.UUID
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error {
+    tx, err := r.db.Begin(ctx) // Убедитесь, что r.db это *pgxpool.Pool
+    if err != nil {
+        return fmt.Errorf("failed to begin tx: %w", err)
+    }
+    defer tx.Rollback(ctx)
+
+    var canvasID uuid.UUID
+
+    // 1. Создаем Canvas. Используем string(payloadJSON) для надежности с типом JSONB
+    insertCanvasQuery := `
+        INSERT INTO canvases (payload) 
+        VALUES ($1) 
+        RETURNING id;
+    `
+    err = tx.QueryRow(ctx, insertCanvasQuery, string(payloadJSON)).Scan(&canvasID)
+    if err != nil {
+        return fmt.Errorf("failed to insert canvas: %w", err)
+    }
+
+    // 2. Обновляем Post
+    updatePostQuery := `
+        UPDATE posts 
+        SET canvas_id = $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2;
+    `
+    tag, err := tx.Exec(ctx, updatePostQuery, canvasID, postID)
+    if err != nil {
+        return fmt.Errorf("failed to update post: %w", err)
+    }
+
+    // Проверка для pgx v5
+    if tag.RowsAffected() == 0 {
+        return fmt.Errorf("post not found")
+    }
+
+    return tx.Commit(ctx)
 }
 
 func NewPostRepository(db *pgxpool.Pool) *PostRepository {

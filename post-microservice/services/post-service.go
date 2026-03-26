@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
@@ -17,13 +18,14 @@ import (
 	// "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	// "github.com/google/uuid"
 )
 
 type PostServiceInter interface {
-	// GetPresignedUrls(ctx context.Context, req *models.PresignedRequest, roomID string) (*models.PresignedResponse, error)
     CreatePost(ctx context.Context, req models.CreatePostRequest) (*models.CreatePostResponse, error)
-    // PublishPost(ctx context.Context, req models.PublishPostRequest) error
+	GenerateMediaUrls(ctx context.Context, roomID uuid.UUID, req models.GenerateUrlsRequest) (*models.GenerateUrlsResponse, error)
+	CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error
 }
 
 type PostService struct {
@@ -32,94 +34,11 @@ type PostService struct {
 	bucketMediaName string
 }
 
-// func (s *PostService) GetPresignedUrls(ctx context.Context, req *models.PresignedRequest, roomID string) (*models.PresignedResponse, error) {
-// 	resp := &models.PresignedResponse{
-// 		Files: make([]models.PresignedFile, 0, len(req.Files)),
-// 	}
+func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error {
 
-// 	now := time.Now()
-//     // Базовая часть пути для всех файлов этого запроса
-//     basePath := fmt.Sprintf("%d/%02d/%s/%s", now.Year(), now.Month(), roomID, req.PostId)
-
-//     // 1. Обработка основных файлов поста
-//     for _, file := range req.Files {
-//         ext := filepath.Ext(file.Filename)
-//         // Путь: year/month/room_id/post_id/file_id.ext
-//         objectKey := fmt.Sprintf("%s/%s%s", basePath, file.UploadID, ext)
-
-//         presignedURL, err := s.generatePresignedPutURL(ctx, objectKey, file.ContentType)
-//         if err != nil {
-//             return nil, fmt.Errorf("failed to generate URL for file %s: %w", file.UploadID, err)
-//         }
-
-//         publicURL := fmt.Sprintf("https://storage.yandexcloud.net/%s/%s", s.bucketMediaName, objectKey)
-
-//         resp.Files = append(resp.Files, models.PresignedFile{
-//             UploadID:     file.UploadID,
-//             PresignedURL: presignedURL,
-//             PublicURL:    publicURL,
-//         })
-//     }
-
-//     // 2. Обработка превью поста
-//     if req.Preview.PreviewId != "" {
-//         // Для превью добавим префикс "preview_" или положим в папку "previews"
-//         previewExt := filepath.Ext(req.Preview.PathPreview)
-//         if previewExt == "" {
-//             previewExt = ".jpg" // Дефолт для превью
-//         }
-        
-// 		previewKey := fmt.Sprintf("%s/%s%s", basePath, req.Preview.PreviewId, previewExt)
-
-//         // Контент-тип для превью обычно image/jpeg или image/webp
-//         previewPresignedURL, err := s.generatePresignedPutURL(ctx, previewKey, "image/jpeg")
-//         if err != nil {
-//             return nil, fmt.Errorf("failed to generate URL for preview: %w", err)
-//         }
-
-//         previewPublicURL := fmt.Sprintf("https://storage.yandexcloud.net/%s/%s", s.bucketMediaName, previewKey)
-
-//         resp.Preview = models.PreviewResponse{
-//             PreviewReq:   req.Preview,
-//             PresignedURL: previewPresignedURL,
-//             PublicURL:    previewPublicURL,
-//         }
-
-// 		fmt.Println("Обработка превью прошла успешно")
-//     }
-
-
-// 	return resp, nil
-// }
-
-// func (s *PostService) GetCategoryIdBySlug(ctx context.Context, slug string) (int, error) {
-//     if slug == "" {
-//         return 0, fmt.Errorf("slug cannot be empty")
-//     }
-
-//     id, err := s.repo.GetCategoryIdBySlug(ctx, slug)
-//     if err != nil {
-//         // Логируем ошибку и пробрасываем выше
-//         return -1, err
-//     }
-
-//     return id, nil
-// }
-
-// func (s *PostService) PublishPost(ctx context.Context, req models.PublishPostRequest) error {
-// 	// Очистка хештегов: убираем пробелы, пустые строки и приводим к нижнему регистру
-// 	var cleanHashtags []string
-// 	for _, tag := range req.Hashtags {
-// 		t := strings.TrimSpace(strings.ToLower(tag))
-// 		if t != "" {
-// 			cleanHashtags = append(cleanHashtags, t)
-// 		}
-// 	}
-// 	req.Hashtags = cleanHashtags
-
-// 	// Вызываем репозиторий. Транзакция будет управляться там.
-// 	return s.repo.PublishPost(ctx, req)
-// }
+	// Делегируем работу с БД репозиторию
+	return s.repo.InsertCanvasAndUpdatePost(ctx, postID, payload)
+}
 
 func (s *PostService) CreatePost(ctx context.Context, req models.CreatePostRequest) (*models.CreatePostResponse, error) {
     // 1. Находим category_id по slug
@@ -150,7 +69,7 @@ func (s *PostService) CreatePost(ctx context.Context, req models.CreatePostReque
 	}
 
     // 3. Формируем пути для preview
-	objectKey := fmt.Sprintf("%s/%s/%s/%s", req.Post.RoomID, postID, req.Preview.UploadID, fileExtension)
+	objectKey := fmt.Sprintf("%s/%s/%s%s", req.Post.RoomID, postID, req.Preview.UploadID, fileExtension)
 
 	// 4. Генерируем Presigned URL и Public URL для превью
 	presignedURL, publicURL, err := s.generatePresignedAndPublicURL(ctx, objectKey, req.Preview.ContentType)
@@ -183,6 +102,53 @@ func (s *PostService) CreatePost(ctx context.Context, req models.CreatePostReque
 		},
 	}, nil
 
+}
+
+func (s *PostService) GenerateMediaUrls(ctx context.Context, roomID uuid.UUID, req models.GenerateUrlsRequest) (*models.GenerateUrlsResponse, error) {
+	// Базовая валидация (защита от пустых запросов)
+	if len(req.Files) == 0 {
+		return &models.GenerateUrlsResponse{
+            Files: []models.GeneratedURL{}, // Инициализируем пустой слайс, чтобы Flutter не получил null
+        }, nil
+	}
+
+	response := &models.GenerateUrlsResponse{
+		Files: make([]models.GeneratedURL, 0, len(req.Files)), // Аллоцируем память сразу
+	}
+
+	for _, file := range req.Files {
+		// 1. Извлекаем расширение файла
+		ext := path.Ext(file.Filename)
+		if ext == "" {
+			ext = ".jpg" // Fallback по умолчанию
+		}
+
+		// 2. Формируем безопасный objectKey
+		// Структура: room_id/post_id/upload_id.ext
+		objectKey := fmt.Sprintf("%s/%s/%s%s",
+			roomID.String(),
+			req.PostID.String(),
+			file.UploadID.String(),
+			ext,
+		)
+
+		// 3. Вызываем твой метод генерации ссылок (предполагается, что он реализован ниже)
+		presignedURL, publicURL, err := s.generatePresignedAndPublicURL(ctx, objectKey, file.ContentType)
+		if err != nil {
+			// Логируем, но не роняем весь процесс из-за одного битого файла
+			// В реальном проекте тут лучше использовать логгер: log.Printf("ошибка генерации: %v", err)
+			return nil, fmt.Errorf("ошибка генерации ссылки для файла %s: %w", file.UploadID, err)
+		}
+
+		// 4. Добавляем результат в ответ
+		response.Files = append(response.Files, models.GeneratedURL{
+			UploadID:     file.UploadID,
+			PublicURL:    publicURL,
+			PresignedURL: presignedURL,
+		})
+	}
+
+	return response, nil
 }
 
 func CleanHashtags(tags []string) []string {
@@ -251,3 +217,4 @@ func (s *PostService) generatePresignedAndPublicURL(ctx context.Context, objectK
 func NewPostService(repository repositories.PostRepositoryInter, s3Client *s3.Client, bucketMediaName string) *PostService {
 	return &PostService{repo: repository, s3Client: s3Client, bucketMediaName: bucketMediaName}
 }
+
