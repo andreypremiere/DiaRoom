@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"post-microservice/models"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type PostRepositoryInter interface {
@@ -14,10 +16,12 @@ type PostRepositoryInter interface {
 	UpdatePostPreviewURL(ctx context.Context, postID uuid.UUID, previewURL string) error
 	AddHashtagsToPost(ctx context.Context, postID uuid.UUID, hashtags []string) error
 	InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error
+    PushPostToQueue(ctx context.Context, postID uuid.UUID) error
 }
 
 type PostRepository struct {
 	db *pgxpool.Pool	
+    redis *redis.Client
 
 }
 
@@ -29,6 +33,17 @@ func (r *PostRepository) UpdatePostPreviewURL(ctx context.Context, postID uuid.U
         WHERE id = $2
     `, previewURL, postID)
 	return err
+}
+
+// PushPostToQueue кладет ID поста в список Redis
+func (r *PostRepository) PushPostToQueue(ctx context.Context, postID uuid.UUID) error {
+    // Используем LPUSH для добавления в начало списка
+    // Ключ лучше вынести в константу, например "posts:queue:new"
+    err := r.redis.LPush(ctx, "new_posts:post_id", postID.String()).Err()
+    if err != nil {
+        return fmt.Errorf("failed to push post to redis: %w", err)
+    }
+    return nil
 }
 
 func (r *PostRepository) GetCategoryIdBySlug(ctx context.Context, slug string) (int, error) {
@@ -152,8 +167,8 @@ func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID u
     return tx.Commit(ctx)
 }
 
-func NewPostRepository(db *pgxpool.Pool) *PostRepository {
+func NewPostRepository(db *pgxpool.Pool, redis *redis.Client) *PostRepository {
 	// Принимать базы данных какие-нибудь
 
-	return &PostRepository{db: db}
+	return &PostRepository{db: db, redis: redis}
 }

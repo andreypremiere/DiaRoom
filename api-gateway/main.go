@@ -111,5 +111,7 @@ func main() {
         "/rooms/getRoomByRoomId",
     })
 
+	gateway.AddRoute("/auth", "http://user-microservice:81", []string{})
+
     http.ListenAndServe(":80", gateway)
 }

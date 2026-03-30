@@ -138,11 +138,11 @@ func main() {
 	}
 	defer pool.Close() // Не забудь закрыть при выходе
 	
+	redisClient := database.InitRedisQueue()
 
 	// Инициализация слоев приложения (Repository -> Service -> App)
-	repository := repositories.NewPostRepository(pool)
+	repository := repositories.NewPostRepository(pool, redisClient)
 	service := services.NewPostService(repository, s3Client, "media-for-publication")
-
 
 	app := App{service: service}
 	

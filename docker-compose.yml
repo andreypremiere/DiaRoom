@@ -106,6 +106,26 @@ services:
     networks:
       - backend-application
 
+  checking-content-microservice:
+    build: ./content-checking-microservice
+    container_name: checking-content-microservice
+    ports:
+      - "8084:8000"
+    volumes:
+    - ./content-checking-microservice:/app
+    networks:
+      - backend-application
+
+
+  redis-queue:
+    image: redis:8.6.0-alpine3.23
+    container_name: redis-queue
+    ports:
+      - "6380:6379"
+    networks:
+    - backend-application
+    
+
   redis-cache:
     image: redis:8.6.0-alpine3.23
     container_name: redis-cache

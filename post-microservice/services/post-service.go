@@ -35,9 +35,19 @@ type PostService struct {
 }
 
 func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error {
+	err := s.repo.InsertCanvasAndUpdatePost(ctx, postID, payload)
+	if (err != nil) {
+		fmt.Println("Ошибка добавления холста в пост", err.Error())
+		return err
+	}
 
+	err = s.repo.PushPostToQueue(ctx, postID)
+	if (err != nil) {
+		fmt.Println("Ошибка добавления id поста в очередь", err.Error())
+		return err
+	}
 	// Делегируем работу с БД репозиторию
-	return s.repo.InsertCanvasAndUpdatePost(ctx, postID, payload)
+	return nil
 }
 
 func (s *PostService) CreatePost(ctx context.Context, req models.CreatePostRequest) (*models.CreatePostResponse, error) {
