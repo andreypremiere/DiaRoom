@@ -12,11 +12,12 @@ def fill_queue():
     print(f"🚀 Начинаем заполнение тестирование...")
     try:
         while True:
-            for i in range(22):
+            for i in range(2):
                 r.lpush(QUEUE_KEY, '6132b35b-537c-45e3-866e-6a440f1c2d23')
                 r.lpush(QUEUE_KEY, '1cbae323-b25f-4fb0-89fb-bb81df445fce')
             time.sleep(1)
             print(f"\n✨ Готово! В очереди сейчас элементов: {r.llen(QUEUE_KEY)}")
+            break
 
     except Exception as e:
         print(f"❌ Ошибка подключения: {e}")

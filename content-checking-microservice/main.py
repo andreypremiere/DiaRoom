@@ -1,69 +1,58 @@
 import asyncio
-import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from database import redis_client
-from moderator import analyze_text
-from tools import get_canvas_payload_by_post, process_results_async
 
-app = FastAPI()
-
-
-async def redis_worker():
-    """Фоновый процесс для обработки очереди"""
-    print("🚀 Worker started: watching 'posts_queue'...")
-
-    cache_list = []
-
-    BATCH_TIMEOUT = 0.5
-    MAX_BATCH_SIZE = 16
-    last_batch_time = time.time()
-    while True:
-        try:
-            raw_data = await redis_client.brpop("new_posts:post_id", timeout=1)
-
-            if raw_data:
-                post_id = raw_data[1]
-                payload = await get_canvas_payload_by_post(post_id)
-
-                if payload:
-                    full_text = " ".join([
-                        block['text'].strip()
-                        for block in payload
-                        if block.get('type') == 'text'
-                    ])
-                    cache_list.append({
-                        'post_id': post_id,
-                        'full_text': full_text
-                    })
-
-            current_time = time.time()
-            time_since_last = current_time - last_batch_time
-
-            if len(cache_list) >= MAX_BATCH_SIZE or (time_since_last > BATCH_TIMEOUT and cache_list):
-                print(f"📦 Обработка батча: {len(cache_list)} постов...")
-
-                start_time = time.perf_counter()
-                results = analyze_text(cache_list)
-                end_time = time.perf_counter()
-                duration = end_time - start_time
-                print(f"⏱️ Функция analyze_text выполнена за {duration:.4f} сек.", flush=True)
-
-                await process_results_async(results)
-
-                cache_list = []
-                last_batch_time = time.time()
-
-        except Exception as e:
-            print(f"❌ Worker Error: {e}")
-            await asyncio.sleep(5)
+from config import settings
+from services.moderator_service import ModerationService
+from repositories.post_repository import PostRepository
+from workers.redis_worker import redis_worker
+import redis.asyncio as asyncio_redis
 
 
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(redis_worker())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Приложение запускается...")
+
+    redis_client = asyncio_redis.from_url(
+        settings.REDIS_URL, decode_responses=True, max_connections=10
+    )
+
+    moderation_service = ModerationService().load()
+    repo = PostRepository()
+
+    app.state.moderation_service = moderation_service
+    app.state.repo = repo
+    app.state.redis_client = redis_client
+
+    worker_task = asyncio.create_task(
+        redis_worker(moderation_service, repo, redis_client)
+    )
+
+    yield
+
+    print("Выключение приложения...")
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+    await redis_client.aclose()
+    await repo.engine.dispose()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
-def read_root():
-    return {"status": "worker_running"}
+async def read_root():
+    return {
+        "status": "worker_running",
+        "model": "rubert-tiny-toxicity (INT8)",
+        "batch_size": settings.MAX_BATCH_SIZE,
+    }
+
+
+@app.post("/analyze")
+async def manual_analyze(posts: list[dict]):
+    return app.state.moderation_service.analyze_text(posts)

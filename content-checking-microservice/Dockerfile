@@ -5,7 +5,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y libpq-dev gcc && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# Сначала обновляем pip
+
 RUN pip install --no-cache-dir --upgrade pip
 
 # Ставим Torch отдельно, явно указывая индекс для CPU
