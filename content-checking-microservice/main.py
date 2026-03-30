@@ -1,9 +1,10 @@
 import asyncio
+import time
 
 from fastapi import FastAPI
-from database import engine, redis_client
-from moderator import analyze_long_text
-from tools import get_canvas_payload_by_post
+from database import redis_client
+from moderator import analyze_text
+from tools import get_canvas_payload_by_post, process_results_async
 
 app = FastAPI()
 
@@ -12,48 +13,50 @@ async def redis_worker():
     """Фоновый процесс для обработки очереди"""
     print("🚀 Worker started: watching 'posts_queue'...")
 
+    cache_list = []
+
+    BATCH_TIMEOUT = 0.5
+    MAX_BATCH_SIZE = 16
+    last_batch_time = time.time()
     while True:
         try:
-            result = redis_client.blpop("new_posts:post_id", timeout=10)
+            raw_data = await redis_client.brpop("new_posts:post_id", timeout=1)
 
-            if result:
-                print(result, flush=True)
+            if raw_data:
+                post_id = raw_data[1]
+                payload = await get_canvas_payload_by_post(post_id)
 
-                payload = get_canvas_payload_by_post(result[1])
+                if payload:
+                    full_text = " ".join([
+                        block['text'].strip()
+                        for block in payload
+                        if block.get('type') == 'text'
+                    ])
+                    cache_list.append({
+                        'post_id': post_id,
+                        'full_text': full_text
+                    })
 
-                if payload is None:
-                    print('Результат обращение к бд вернул none', flush=True)
-                    continue
-                else:
-                    print(payload, flush=True)
+            current_time = time.time()
+            time_since_last = current_time - last_batch_time
 
-                text_blocks = [
-                    block['text'].strip()
-                    for block in payload
-                    if block.get('type') == 'text' and 'text' in block
-                ]
+            if len(cache_list) >= MAX_BATCH_SIZE or (time_since_last > BATCH_TIMEOUT and cache_list):
+                print(f"📦 Обработка батча: {len(cache_list)} постов...")
 
-                # Объединяем их в одну строку через пробел
-                full_text = " ".join(text_blocks)
+                start_time = time.perf_counter()
+                results = analyze_text(cache_list)
+                end_time = time.perf_counter()
+                duration = end_time - start_time
+                print(f"⏱️ Функция analyze_text выполнена за {duration:.4f} сек.", flush=True)
 
-                print(f"Результат: {full_text}", flush=True)
+                await process_results_async(results)
 
-                if full_text.strip():
-                    # Проверка моделью
-                    verdict = analyze_long_text(full_text)
-
-                    status = "approved"
-                    if verdict['label'] != "non-toxic":
-                        status = "rejected"
-                        print(f"🚫 Post {result[1]} REJECTED. Reason: {verdict['label']} ({verdict['score']:.2f})",
-                              flush=True)
-                    else:
-                        print(f"✅ Post {result[1]} APPROVED", flush=True)
-
+                cache_list = []
+                last_batch_time = time.time()
 
         except Exception as e:
             print(f"❌ Worker Error: {e}")
-            await asyncio.sleep(5)  # Если ошибка (например, БД упала), ждем 5 сек и пробуем снова
+            await asyncio.sleep(5)
 
 
 @app.on_event("startup")
