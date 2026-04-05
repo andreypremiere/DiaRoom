@@ -108,13 +108,18 @@ services:
 
   checking-content-microservice:
     build: ./content-checking-microservice
-    container_name: checking-content-microservice
-    ports:
-      - "8084:8000"
+    # container_name: checking-content-microservice
+    # ports:
+    #   - "8084:8000"
     volumes:
     - ./content-checking-microservice:/app
     networks:
       - backend-application
+    deploy:           
+      resources:      
+        limits:       
+          cpus: '3'  # Ограничение: не более 300% (3 ядер)
+          memory: 2G   # Ограничение: не более 2 ГБ оперативной памяти
 
 
   redis-queue:

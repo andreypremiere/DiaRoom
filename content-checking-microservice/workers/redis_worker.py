@@ -14,7 +14,7 @@ async def redis_worker(
     repo: PostRepository,
     redis_client: asyncio_redis.Redis,
 ):
-    print("🚀 Worker started: watching queue...", flush=True)
+    print("Worker started: watching queue...", flush=True)
     cache_list: List[Dict[str, Any]] = []
     last_batch_time = time.time()
 
@@ -39,11 +39,11 @@ async def redis_worker(
             if len(cache_list) >= settings.MAX_BATCH_SIZE or (
                 current_time - last_batch_time > settings.BATCH_TIMEOUT and cache_list
             ):
-                print(f"📦 Обработка батча: {len(cache_list)} постов...")
+                print(f"Обработка батча: {len(cache_list)} постов...")
                 start = time.perf_counter()
                 results = moderation_service.analyze_text(cache_list)
                 duration = time.perf_counter() - start
-                print(f"⏱️ analyze_text выполнен за {duration:.4f} сек.")
+                print(f"analyze_text выполнен за {duration:.4f} сек.")
 
                 if results:
                     await repo.update_posts(results)
@@ -52,5 +52,5 @@ async def redis_worker(
                 last_batch_time = time.time()
 
         except Exception as e:
-            print(f"❌ Worker error: {e}")
+            print(f"Worker error: {e}")
             await asyncio.sleep(5)

@@ -22,7 +22,7 @@ class PostRepository:
                 row = result.mappings().one_or_none()
                 return row["payload"] if row else None
         except Exception as e:
-            print(f"❌ Ошибка получения payload для {post_id}: {e}")
+            print(f"Ошибка получения payload для {post_id}: {e}")
             return None
 
     async def update_posts(self, results: List[Dict[str, Any]]):
@@ -55,6 +55,6 @@ class PostRepository:
                     WHERE id = :post_id AND is_deleted = FALSE
                 """)
                 await conn.execute(query, data_to_update)
-            print(f"✅ БД обновлена: {len(results)} постов.")
+            print(f"БД обновлена: {len(results)} постов.")
         except Exception as e:
-            print(f"❌ Ошибка обновления БД: {e}")
+            print(f"Ошибка обновления БД: {e}")

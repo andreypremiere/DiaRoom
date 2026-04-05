@@ -7,3 +7,5 @@ go.sum
 .pytest_cache/
 .env
 __pycache__/
+
+content-checking-microservice/models/

@@ -13,7 +13,7 @@ class ModerationService:
         self.device = torch.device("cpu")
 
     def load(self) -> "ModerationService":
-        print(f"⏳ Загрузка модели из {settings.MODEL_PATH}...")
+        print(f"Загрузка модели из {settings.MODEL_PATH}...")
 
         tokenizer = AutoTokenizer.from_pretrained(settings.MODEL_PATH)
         model_fp32 = AutoModelForSequenceClassification.from_pretrained(settings.MODEL_PATH)
@@ -30,7 +30,7 @@ class ModerationService:
         self.model.eval()
 
         size_mb = sum(p.numel() * p.element_size() for p in self.model.parameters()) / (1024 ** 2)
-        print(f"✅ Модель загружена в INT8 (~{size_mb:.1f} MB) на {self.device}")
+        print(f"Модель загружена в INT8 (~{size_mb:.1f} MB) на {self.device}")
         return self
 
     def analyze_text(self, list_post: List[Dict[str, Any]]) -> List[Dict[str, Any]] | None:
