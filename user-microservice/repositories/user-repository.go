@@ -13,7 +13,7 @@ import (
 // UserRepositoryInter определяет интерфейс для работы с данными пользователей в Postgres и Redis
 type UserRepositoryInter interface {
 	// AddUser сохраняет нового пользователя в базу данных Postgres
-	AddUser(ctx context.Context, id uuid.UUID, numberPhone string, roomId string) error
+	AddUser(ctx context.Context, id uuid.UUID, email string, passwordHash string) error
 	
 	// DeleteUserById удаляет пользователя из базы данных по его идентификатору
 	DeleteUserById(criticalCtx context.Context, userId uuid.UUID) error
@@ -35,10 +35,10 @@ type userRepository struct {
 }
 
 // AddUser выполняет вставку записи о пользователе в таблицу users
-func (ur *userRepository) AddUser(ctx context.Context, id uuid.UUID, numberPhone string, roomId string) error {
-	sqlInsert := "INSERT INTO users (id, phone, room_name_id) VALUES ($1, $2, $3)"
+func (ur *userRepository) AddUser(ctx context.Context, id uuid.UUID, email string, passwordHash string) error {
+	sqlInsert := "INSERT INTO users (id, email, hash_password) VALUES ($1, $2, $3)"
 	// Выполнение SQL запроса с привязкой параметров
-	_, err := ur.db.Exec(ctx, sqlInsert, id, numberPhone, roomId)
+	_, err := ur.db.Exec(ctx, sqlInsert, id, email, passwordHash)
 	return err
 }
 

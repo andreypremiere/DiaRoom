@@ -1,15 +1,13 @@
 package services
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
+	"user-microservice/contracts/requests"
 	"user-microservice/models"
 	"user-microservice/repositories"
 	"user-microservice/utils"
@@ -21,7 +19,7 @@ import (
 // UserServiceInter определяет интерфейс управления пользователями и их авторизацией
 type UserServiceInter interface {
 	// AddUser регистрирует пользователя и инициирует создание комнаты
-	AddUser(ctx context.Context, user *models.RegisterUser) (uuid.UUID, error)
+	AddUser(ctx context.Context, user *requests.UserCreatingContract) (uuid.UUID, error)
 	// VerifyCode проверяет код из Redis и возвращает JWT токен
 	VerifyCode(ctx context.Context, verifyUser models.VerifyUserById) (string, error)
 	// LoginUser инициирует процесс входа через отправку кода
@@ -31,73 +29,38 @@ type UserServiceInter interface {
 // userService реализует бизнес-логику с использованием репозитория и SMS-провайдера
 type userService struct {
 	userRepo    repositories.UserRepositoryInter
-	smsProvider utils.SmsProvider
+	emailProvider *utils.MailService
+	passHasher *utils.PasswordHasher
 }
 
 // AddUser выполняет комплексный процесс регистрации пользователя и комнаты
-func (us userService) AddUser(ctx context.Context, user *models.RegisterUser) (uuid.UUID, error) {
+func (us userService) AddUser(ctx context.Context, user *requests.UserCreatingContract) (uuid.UUID, error) {
 	newUUID := uuid.New()
-	if user.Id != uuid.Nil {
-		newUUID = user.Id
-	}
 
 	// Валидация обязательных полей перед началом транзакции
-	if user.RoomId == "" {
-		return uuid.Nil, errors.New("Room Id cannot be empty")
+	if user.Email == "" {
+		return uuid.Nil, errors.New("Поле Email оказалось пустым")
 	}
-	if user.NumberPhone == "" {
-		return uuid.Nil, errors.New("NumberPhone cannot be empty")
+	if user.Password == "" {
+		return uuid.Nil, errors.New("Поле Password оказалось пустым")
+	}
+
+	// Сделать хеш пароля
+	hashPassword, err := us.passHasher.HashPassword(user.Password)
+	if err != nil {
+		return uuid.Nil, err
 	}
 
 	// Сохранение базовой записи пользователя в Postgres
-	err := us.userRepo.AddUser(ctx, newUUID, user.NumberPhone, user.RoomId)
-	if err != nil {
-		fmt.Println("Ошибка добавления пользователя в базу данных", err)
-		return uuid.Nil, err
-	}
-
-	// Ограничение времени на сетевой запрос к соседнему микросервису
-	reqCtx, cancel := context.WithTimeout(ctx, 400*time.Millisecond)
-	defer cancel()
-
-	// Подготовка данных для создания профиля комнаты
-	url := "http://room-microservice:81/newRoom"
-	roomCreating := models.RoomCreating{UserId: newUUID, RoomName: user.RoomName, RoomNameId: user.RoomId}
-	body, err := json.Marshal(roomCreating)
+	err = us.userRepo.AddUser(ctx, newUUID, user.Email, hashPassword)
 	if err != nil {
 		return uuid.Nil, err
 	}
-
-	// Выполнение ме сервисного запроса
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewBuffer(body))
-	if err != nil {
-		return uuid.Nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Println("Ошибка при обращении к микросервису rooms", err.Error())
-		return uuid.Nil, err
-	}
-	defer resp.Body.Close()
-
-	// Компенсирующая транзакция: удаление юзера при ошибке создания комнаты
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println("Внешний сервис вернул ошибку: ", resp.StatusCode)
-		err := us.DeleteUserById(ctx, newUUID)
-		if err != nil {
-			fmt.Println("Ошибка удаления пользователя при ошибке его создания. БАГ.", err.Error())
-			return uuid.Nil, err
-		}
-		return uuid.Nil, errors.New("Микросервис вернул плохой статус код")
-	} 
 
 	// Генерация и отправка проверочного кода через SMS
-	err = us.GenerateAndSendCode(ctx, newUUID, user.NumberPhone)
+	err = us.GenerateAndSendCode(ctx, newUUID, user.Email)
 	if err != nil {
-		return uuid.Nil, err
+		fmt.Println("Возникла ошибка во время создания или отправки кода")
 	}
 
 	return newUUID, nil
@@ -173,20 +136,20 @@ func (us *userService) FindUserByPhoneOrRoomId(ctx context.Context, value string
 }
 
 // GenerateAndSendCode отвечает за полный цикл работы с OTP (генерация, хранение, отправка)
-func (us *userService) GenerateAndSendCode(ctx context.Context, userId uuid.UUID, numberPhone string) error {
+func (us *userService) GenerateAndSendCode(ctx context.Context, userId uuid.UUID, email string) error {
 	code, err := utils.GenerateCode()
 	if err != nil {
 		return err
 	}
 
-	// Сохранение кода в кэш
+	// Сохранение кода в базу редис
 	err = us.AddCodeWithTimeout(ctx, userId, code)
 	if err != nil {
 		return err
 	}
 
 	// Физическая отправка через провайдера
-	err = us.smsProvider.SendCode(numberPhone, code)
+	err = us.emailProvider.SendVerificationCode(email, code)
 	if err != nil {
 		return  err
 	}
@@ -195,6 +158,6 @@ func (us *userService) GenerateAndSendCode(ctx context.Context, userId uuid.UUID
 }
 
 // NewUserService создает экземпляр сервиса с необходимыми зависимостями
-func NewUserService(userRepo repositories.UserRepositoryInter, smsProvider utils.SmsProvider) *userService {
-	return &userService{userRepo: userRepo, smsProvider: smsProvider}
+func NewUserService(userRepo repositories.UserRepositoryInter, emailProvider *utils.MailService, passwordHasher *utils.PasswordHasher) *userService {
+	return &userService{userRepo: userRepo, emailProvider: emailProvider, passHasher: passwordHasher}
 }
