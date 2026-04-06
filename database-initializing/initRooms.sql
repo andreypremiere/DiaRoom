@@ -1,12 +1,13 @@
--- Таблица комнат
+-- Таблица комнат (НУЖНО ПЕРЕСОЗДАТЬ)
 CREATE TABLE IF NOT EXISTS rooms (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,
+    user_id UUID NOT NULL UNIQUE,
     
     room_name VARCHAR(100) NOT NULL,
-    room_name_id VARCHAR(70) NOT NULL UNIQUE, 
+    room_unique_id VARCHAR(100) NOT NULL UNIQUE, 
     
     avatar_url TEXT,
+    background_url TEXT,
     bio TEXT,
     
     settings JSONB NOT NULL DEFAULT '{}',
@@ -17,7 +18,9 @@ CREATE TABLE IF NOT EXISTS rooms (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_room_name_id ON rooms(room_name_id);
+CREATE INDEX IF NOT EXISTS idx_room_unique_id ON rooms(room_unique_id);
+CREATE INDEX IF NOT EXISTS idx_user_id ON rooms(user_id);
+CREATE INDEX IF NOT EXISTS idx_rooms_unique_id_lower ON rooms (LOWER(room_unique_id));
 
 -- Таблица категорий
 CREATE TABLE IF NOT EXISTS categories (
@@ -49,6 +52,7 @@ CREATE INDEX IF NOT EXISTS idx_room_categories_cat_id ON room_categories(categor
 
 INSERT INTO categories (slug, name)
 VALUES 
+	('lifestyle-blog', 'Жизнь и Блог'),
     ('visual-arts', 'Арт и Иллюстрация'),
     ('traditional-art', 'Живопись и Рисование'),
     ('photography', 'Фотография'),
@@ -57,15 +61,14 @@ VALUES
     ('video-production', 'Видеопроизводство'),
     ('motion-design', 'Моушн дизайн'),
     ('animation', 'Анимация'),
-    ('music', 'Музыка'),
-    ('sound-design', 'Саунд-дизайн'),
-    ('podcasts', 'Подкасты'),
+    -- ('music', 'Музыка'),
+    -- ('sound-design', 'Саунд-дизайн'),
+    -- ('podcasts', 'Подкасты'),
     ('literature', 'Литература и Статьи'),
-    ('gamedev', 'Игры'),
-    ('it-tech', 'Код и Технологии'),
+    -- ('gamedev', 'Игры'),
+    -- ('it-tech', 'Код и Технологии'),
     ('fashion', 'Мода и Стиль'),
     ('architecture-interior', 'Архитектура и Интерьер'),
-    ('craft-diy', 'Крафт и DIY'),
-    ('lifestyle-blog', 'Жизнь и Блог')
+    ('craft-diy', 'Крафт и DIY')
 ON CONFLICT (slug) 
 DO UPDATE SET name = EXCLUDED.name;

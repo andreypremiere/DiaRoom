@@ -4,25 +4,13 @@ import "github.com/google/uuid"
 
 type BaseUser struct {
 	Id uuid.UUID `json:"id"`
-	NumberPhone string `json:"numberPhone"`
-	RoomId   string `json:"roomId"`
+	Email string `json:"email"`
+	IsActivated bool `json:"isActivated"`
 }
 
-// Структура для регистрации пользователя
-type RegisterUser struct {
+type CheckUser struct {
 	BaseUser
-	RoomName string `json:"roomName"`
+	HashPassword string `json:"hashPassword"`
 }
 
-// Структура для создания комнаты
-type RoomCreating struct {
-	UserId uuid.UUID `json:"userId"`
-	RoomNameId string `json:"roomNameId"`
-	RoomName string `json:"roomName"`
-}
 
-// Структура для верификации пользователя
-type VerifyUserById struct {
-	UserId uuid.UUID `json:"userId"`
-	Code string `json:"code"`
-}
