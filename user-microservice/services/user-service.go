@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"user-microservice/clients"
 	"user-microservice/contracts/requests"
 	"user-microservice/contracts/responses"
 	"user-microservice/models"
@@ -36,6 +37,7 @@ type userService struct {
 	emailProvider *utils.MailService
 	passHasher *utils.PasswordHasher
 	jwtManager *jwtmanager.JWTManager
+	roomClient *clients.RoomClient
 }
 
 // AddUser выполняет комплексный процесс регистрации пользователя и комнаты
@@ -106,6 +108,8 @@ func (us *userService) RefreshSession(ctx context.Context, oldRefreshToken strin
     if err != nil {
         return nil, fmt.Errorf("сессия не найдена: %w", err)
     }
+
+	
 
     // 2. Проверяем срок годности
     if session.ExpiresAt.Before(time.Now()) {
@@ -232,7 +236,7 @@ func (us *userService) GenerateAndSendCode(ctx context.Context, userId uuid.UUID
 
 // NewUserService создает экземпляр сервиса с необходимыми зависимостями
 func NewUserService(userRepo repositories.UserRepositoryInter, emailProvider *utils.MailService, passwordHasher *utils.PasswordHasher,
-	jwtManager *jwtmanager.JWTManager) *userService {
+	jwtManager *jwtmanager.JWTManager, roomClient *clients.RoomClient) *userService {
 	return &userService{userRepo: userRepo, emailProvider: emailProvider, passHasher: passwordHasher,
-	jwtManager: jwtManager,}
+	jwtManager: jwtManager, roomClient: roomClient,}
 }

@@ -2,6 +2,8 @@
 CREATE TABLE IF NOT EXISTS rooms (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL UNIQUE,
+
+    is_configured BOOLEAN DEFAULT FALSE,
     
     room_name VARCHAR(100) NOT NULL,
     room_unique_id VARCHAR(100) NOT NULL UNIQUE, 

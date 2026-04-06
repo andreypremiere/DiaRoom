@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"user-microservice/clients"
 	"user-microservice/contracts/requests"
 	"user-microservice/repositories"
 	"user-microservice/services"
@@ -276,7 +277,11 @@ func main() {
 	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 15*time.Minute)
 	// Сборка графа зависимостей приложения
 	userRepo := repositories.NewUserRepository(poolPg, rdb)
-	userServ := services.NewUserService(userRepo, emailProvider, newPasswordHasher, jwtmanager)
+
+	roomServiceAddr := os.Getenv("ROOM_SERVICE_ADDR")
+	roomClient := clients.NewRoomClient(roomServiceAddr)
+
+	userServ := services.NewUserService(userRepo, emailProvider, newPasswordHasher, jwtmanager, roomClient)
 
 	// Внедрение сервисов в структуру приложения
 	app := &App{

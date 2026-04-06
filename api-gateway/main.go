@@ -22,7 +22,7 @@ func NewProxyHandler() *ProxyHandler {
 	return &ProxyHandler{
 		targets:        make(map[string]*httputil.ReverseProxy),
 		protectedPaths: make(map[string][]*regexp.Regexp),
-		jwtManager:     jwtmanager.NewJWTManager(os.Getenv("JWT_SECRET"), 30*time.Minute),
+		jwtManager:     jwtmanager.NewJWTManager(os.Getenv("JWT_SECRET"), 15*time.Minute),
 	}
 }
 
