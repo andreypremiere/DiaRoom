@@ -2,6 +2,7 @@ package main
 
 import (
 	"account-microservice/contracts/account/requests"
+	"account-microservice/contracts/account/responses"
 	"account-microservice/repositories"
 	"account-microservice/services"
 	"account-microservice/utils"
@@ -50,17 +51,208 @@ func (a *App) newAccount(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // 4. Бизнес-логика (создание аккаунта)
     newId, err := a.accountService.NewAccount(r.Context(), &newAccount)
     if err != nil {
         a.sendError(w, err.Error(), http.StatusInternalServerError)
         return
     }
 
-    // 5. Успешный ответ
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusCreated) 
     json.NewEncoder(w).Encode(map[string]uuid.UUID{"userId": *newId})
+}
+
+func (a *App) verify(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        return
+    }
+
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        return
+    }
+
+    userIDStr := r.PathValue("userId")
+    if userIDStr == "" {
+        a.sendError(w, "ID пользователя не указан", http.StatusBadRequest)
+        return
+    }
+
+    userID, err := uuid.Parse(userIDStr)
+    if err != nil {
+        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        return
+    }
+
+    var userVerify requests.VerifyUser
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields() 
+
+	if err := decoder.Decode(&userVerify); err != nil {
+		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+		return
+	}
+
+    userVerify.UserId = userID
+
+    response, err := a.accountService.VerifyCode(r.Context(), &userVerify)
+
+    if err != nil {
+		if err.Error() == "user did not confirm the email" {
+			a.sendError(w, err.Error(), http.StatusForbidden)
+		}
+		if err.Error() == "couldn't update status" {
+			a.sendError(w, err.Error(), http.StatusInternalServerError)
+		}
+		if err.Error() == "roomId search error" {
+			a.sendError(w, err.Error(), http.StatusNotFound)
+		}
+        a.sendError(w, "Ошибка верификации: " + err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(response)
+}
+
+func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        return
+    }
+
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        return
+    }
+
+	var loginUser requests.LoginUser
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields() 
+
+	if err := decoder.Decode(&loginUser); err != nil {
+		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+		return
+	}
+
+	user, err := a.accountService.LoginUser(r.Context(), &loginUser)
+	if err != nil {
+		a.sendError(w, err.Error(), http.StatusBadRequest)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(responses.LoginResponse{UserId: user.ID, Email: user.Email})
+}
+
+func (a *App) repeatCode(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        return
+    }
+
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        return
+    }
+
+	userIDStr := r.PathValue("userId")
+    if userIDStr == "" {
+        a.sendError(w, "ID пользователя не указан", http.StatusBadRequest)
+        return
+    }
+
+    userID, err := uuid.Parse(userIDStr)
+    if err != nil {
+        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        return
+    }
+
+	var email struct {
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields() 
+
+	if err := decoder.Decode(&email); err != nil {
+		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+		return
+	}
+
+	// В будущем добавить логику проверки по времени запроса (с помощью redis) потом проверять есть ли там такой пользователь
+
+	a.accountService.GenerateAndSendCode(userID, email.Email)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) refreshSession(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        return
+    }
+
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        return
+    }
+
+    var request struct {
+        RefreshToken string `json:"refreshToken"`
+    }
+
+    decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields() 
+
+	if err := decoder.Decode(&request); err != nil {
+		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+		return
+	}
+
+	// Если токен истек или его нет
+    response, err := a.accountService.RefreshSession(r.Context(), request.RefreshToken)
+    if err != nil {
+        a.sendError(w, "Сессия недействительна: "+err.Error(), http.StatusUnauthorized)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(response)
+}
+
+func (a *App) logout(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+        return
+    }
+
+	if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        return
+    }
+
+    var request struct {
+        RefreshToken string `json:"refreshToken"`
+    }
+
+    if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+        a.sendError(w, "Некорректное тело запроса", http.StatusBadRequest)
+        return
+    }
+
+    err := a.accountService.Logout(r.Context(), request.RefreshToken)
+    if err != nil {
+        a.sendError(w, "Ошибка при удалении сессии", http.StatusInternalServerError)
+        return
+    }
+
+    w.WriteHeader(http.StatusNoContent)
 }
 
 
@@ -118,21 +310,18 @@ func main() {
 
 	mux := http.NewServeMux()
 
-    // Регистрация эндпоинтов с явным указанием методов
     mux.HandleFunc("POST /newAccount", app.newAccount)
-    // mux.HandleFunc("POST /verifyUser/{userId}", app.verifyUserById) 
-    // mux.HandleFunc("POST /login", app.LoginUser)
-	// mux.HandleFunc("POST /repeatCode/{userId}", app.repeatSendingCode)
-	// mux.HandleFunc("POST /refresh", app.refreshSession)
-	// mux.HandleFunc("POST /logout", app.logout)
+    mux.HandleFunc("POST /verify/{userId}", app.verify) 
+    mux.HandleFunc("POST /login", app.LoginUser)
+	mux.HandleFunc("POST /repeatCode/{userId}", app.repeatCode)
+	mux.HandleFunc("POST /refreshSession", app.refreshSession)
+	mux.HandleFunc("POST /logout", app.logout)
 
 	fmt.Println("Сервер запущен на :81")
-	// Запуск веб-сервера на порту 81
 	if err := http.ListenAndServe(":81", mux); err != nil {
 		fmt.Println(err.Error())
 	}
 
-	// Гарантированное закрытие пула соединений при завершении программы
 	defer func() {
 		poolPg.Close()
 	}()
