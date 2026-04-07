@@ -54,6 +54,18 @@ services:
     networks:
       - backend-application
 
+  account-microservice:
+    build: ./account-microservice
+    container_name: account-microservice
+    env_file:
+      - .env
+    ports:
+      - "8084:81"
+    volumes:
+      - ./account-microservice:/app
+    networks:
+      - backend-application
+
   room-microservice:
     build: ./room-microservice
     container_name: room-microservice
@@ -77,6 +89,21 @@ services:
       - ./postgresql-users:/var/lib/postgresql
     networks:
       - backend-application
+
+  postgresql-accounts:
+    image: postgres:18.2-alpine3.23
+    container_name: postgresql-accounts
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1111"
+      POSTGRES_DB: db_accounts
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./postgresql-accounts:/var/lib/postgresql
+    networks:
+      - backend-application
+
 
   postgresql-rooms:
     image: postgres:18.2-alpine3.23
@@ -131,13 +158,11 @@ services:
     - backend-application
     
 
-  redis-cache:
+  redis-otp-code:
     image: redis:8.6.0-alpine3.23
-    container_name: redis-cache
+    container_name: redis-otp-code
     ports:
       - "6379:6379"
     networks:
       - backend-application
-    # volumes:
-    #   - ./redis-data:/data # Чтобы задачи не пропали при перезагрузке контейнера
-    # command: ["redis-server", "--appendonly", "yes"] # Включаем сохранение данных на диск
+
