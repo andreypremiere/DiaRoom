@@ -163,6 +163,10 @@ func (as *AccountService) doGenerateAndSend(ctx context.Context, userId uuid.UUI
 	return nil
 }
 
+func (as *AccountService) Logout(ctx context.Context, refreshToken string) error {
+    return as.accountRepo.DeleteRefreshToken(ctx, refreshToken)
+}
+
 func NewAccountService(
 	accountRepo *repositories.AccountRepository,
 	emailProvider *utils.MailService,
