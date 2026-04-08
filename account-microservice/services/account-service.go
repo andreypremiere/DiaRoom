@@ -167,6 +167,16 @@ func (as *AccountService) Logout(ctx context.Context, refreshToken string) error
     return as.accountRepo.DeleteRefreshToken(ctx, refreshToken)
 }
 
+func (as *AccountService) RepeatSendingCode(ctx context.Context, userID uuid.UUID) error {
+	user, err := as.accountRepo.GetUserEmailByID(ctx, userID) 
+	if err != nil {
+		return err
+	}
+
+	as.GenerateAndSendCode(userID, user.Email)
+	return nil
+}
+
 func NewAccountService(
 	accountRepo *repositories.AccountRepository,
 	emailProvider *utils.MailService,

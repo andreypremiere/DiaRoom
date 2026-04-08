@@ -197,7 +197,7 @@ func (ar *AccountRepository) VerifyAndCreateSession(
     }
 
     const addTokenQuery = `
-        INSERT INTO refresh_tokens (user_id, refresh_token, user_agent, expires_at)
+        INSERT INTO sessions (user_id, refresh_token, user_agent, expires_at)
         VALUES ($1, $2, $3, $4)
     `
     _, err = tx.Exec(ctx, addTokenQuery, userID, refreshToken, deviceInfo, expiresAt)
@@ -251,6 +251,21 @@ func (ar *AccountRepository) DeleteRefreshToken(ctx context.Context, token strin
 	}
 
 	return nil
+}
+
+func (ar *AccountRepository) GetUserEmailByID(ctx context.Context, userID uuid.UUID) (*models.EmailUser, error) {
+	var user models.EmailUser
+
+	query := `SELECT id, email FROM users WHERE id = $1`
+	err := ar.poolPg.QueryRow(ctx, query, userID).Scan(&user.ID, &user.Email)
+
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, errors.New("нет такого пользователя")
+		}
+		return nil, err
+	}
+	return &user, nil
 }
 
 func NewAccountRepository(

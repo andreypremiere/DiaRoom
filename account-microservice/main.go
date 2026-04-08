@@ -102,12 +102,15 @@ func (a *App) verify(w http.ResponseWriter, r *http.Request) {
     if err != nil {
 		if err.Error() == "user did not confirm the email" {
 			a.sendError(w, err.Error(), http.StatusForbidden)
+			return
 		}
 		if err.Error() == "couldn't update status" {
 			a.sendError(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		if err.Error() == "roomId search error" {
 			a.sendError(w, err.Error(), http.StatusNotFound)
+			return
 		}
         a.sendError(w, "Ошибка верификации: " + err.Error(), http.StatusBadRequest)
         return
@@ -142,6 +145,7 @@ func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
 	user, err := a.accountService.LoginUser(r.Context(), &loginUser)
 	if err != nil {
 		a.sendError(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -152,11 +156,6 @@ func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
 func (a *App) repeatCode(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
         a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
-        return
-    }
-
-    if r.Header.Get("Content-Type") != "application/json" {
-        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
         return
     }
 
@@ -172,21 +171,11 @@ func (a *App) repeatCode(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-	var email struct {
-		Email string `json:"email"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields() 
-
-	if err := decoder.Decode(&email); err != nil {
-		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+	err = a.accountService.RepeatSendingCode(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	// В будущем добавить логику проверки по времени запроса (с помощью redis) потом проверять есть ли там такой пользователь
-
-	a.accountService.GenerateAndSendCode(userID, email.Email)
 
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -8,3 +8,8 @@ type BaseUser struct {
 	PasswordHash string
 	IsActivated  bool
 }
+
+type EmailUser struct {
+	ID           uuid.UUID
+	Email        string
+}
