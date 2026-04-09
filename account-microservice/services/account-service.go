@@ -20,6 +20,42 @@ type AccountService struct {
 	emailProvider *utils.MailService
 	passHasher    *utils.PasswordHasher
 	jwtManager    *jwtmanager.JWTManager
+	s3Manager     *S3Manager
+}
+
+func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) (*responses.UpdateRoomResponse, error) {
+	var response responses.UpdateRoomResponse
+
+	if request.AvatarFileName != "" {
+		presignedUrlAvatar, staticUrlAvatar, err := as.s3Manager.GenerateUploadContext(context, roomId.String(), request.AvatarFileName)
+		if err != nil {
+			return nil, errors.New("Ошибка генерации ссылок для аватарки")
+		}
+
+		request.AvatarFileName = staticUrlAvatar
+		response.PresignedUrlAvatar = presignedUrlAvatar
+	}
+	if request.BackgroundFileName != "" {
+		presignedUrlBack, staticUrlBack, err := as.s3Manager.GenerateUploadContext(context, roomId.String(), request.BackgroundFileName)
+		if err != nil {
+			return nil, errors.New("Ошибка генерации ссылок для фона")
+		}
+
+		request.BackgroundFileName = staticUrlBack
+		response.PresignedUrlBackground = presignedUrlBack
+	}
+
+	err := as.accountRepo.UpdateRoom(context, roomId, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return &response, nil 
+}
+
+func (as *AccountService) GetRoom(context context.Context, roomId uuid.UUID) (*responses.RoomResponse, error) {
+	room, err := as.accountRepo.GetRoom(context, roomId)
+	return room, err
 }
 
 func (as *AccountService) VerifyCode(context context.Context, userVerify *requests.VerifyUser) (*responses.AuthResponse, error) {
@@ -46,17 +82,17 @@ func (as *AccountService) VerifyCode(context context.Context, userVerify *reques
 		return nil, errors.New("codes don't match")
 	}
 
-	accessToken, _ := as.jwtManager.Generate(userVerify.UserId.String(), roomId.String()) 
-	refreshToken := uuid.New().String() 
-	expiresAt := time.Now().Add(30 * 24 * time.Hour) 
+	accessToken, _ := as.jwtManager.Generate(userVerify.UserId.String(), roomId.String())
+	refreshToken := uuid.New().String()
+	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
-    err = as.accountRepo.VerifyAndCreateSession(context, userVerify.UserId, refreshToken, userVerify.DeviceInfo, expiresAt)
-    if err != nil {
-        return nil, errors.New("couldn't update status")
-    }
+	err = as.accountRepo.VerifyAndCreateSession(context, userVerify.UserId, refreshToken, userVerify.DeviceInfo, expiresAt)
+	if err != nil {
+		return nil, errors.New("couldn't update status")
+	}
 
 	response := &responses.AuthResponse{AccessToken: accessToken, RefreshToken: refreshToken, IsConfigured: isConfigured}
-	
+
 	return response, nil
 }
 
@@ -104,46 +140,45 @@ func (as *AccountService) GenerateAndSendCode(userId uuid.UUID, email string) {
 }
 
 func (as *AccountService) LoginUser(ctx context.Context, loginReq *requests.LoginUser) (*models.BaseUser, error) {
-    user, err := as.accountRepo.GetUserByEmail(ctx, loginReq.Email)
-    if err != nil {
-        return nil, errors.New("incorrect email address or server error")
-    }
+	user, err := as.accountRepo.GetUserByEmail(ctx, loginReq.Email)
+	if err != nil {
+		return nil, errors.New("incorrect email address or server error")
+	}
 
-    isEqual := as.passHasher.ComparePassword(loginReq.Password, user.PasswordHash)
-    if !isEqual {
-        return nil, errors.New("password incorrect")
-    }
+	isEqual := as.passHasher.ComparePassword(loginReq.Password, user.PasswordHash)
+	if !isEqual {
+		return nil, errors.New("password incorrect")
+	}
 
 	as.GenerateAndSendCode(user.ID, user.Email)
 
-    return user, nil
+	return user, nil
 }
 
 func (as *AccountService) RefreshSession(ctx context.Context, oldRefreshToken string) (*responses.RefreshTokens, error) {
-    session, err := as.accountRepo.GetSessionByToken(ctx, oldRefreshToken)
-    if err != nil {
-        return nil, err
-    }
+	session, err := as.accountRepo.GetSessionByToken(ctx, oldRefreshToken)
+	if err != nil {
+		return nil, err
+	}
 
 	if session.ExpiresAt.Before(time.Now()) {
-        _ = as.accountRepo.DeleteRefreshToken(ctx, oldRefreshToken) 
-        return nil, fmt.Errorf("service life has expired")
-    }
+		_ = as.accountRepo.DeleteRefreshToken(ctx, oldRefreshToken)
+		return nil, fmt.Errorf("service life has expired")
+	}
 
-    newAccessToken, _ := as.jwtManager.Generate(session.UserId.String(), session.RoomId.String())
-    newRefreshToken := uuid.New().String()
-    newExpiresAt := time.Now().Add(30 * 24 * time.Hour) 
+	newAccessToken, _ := as.jwtManager.Generate(session.UserId.String(), session.RoomId.String())
+	newRefreshToken := uuid.New().String()
+	newExpiresAt := time.Now().Add(30 * 24 * time.Hour)
 
+	err = as.accountRepo.UpdateRefreshToken(ctx, oldRefreshToken, newRefreshToken, newExpiresAt)
+	if err != nil {
+		return nil, errors.New("token update error")
+	}
 
-    err = as.accountRepo.UpdateRefreshToken(ctx, oldRefreshToken, newRefreshToken, newExpiresAt)
-    if err != nil {
-        return nil, errors.New("token update error")
-    }
-
-    return &responses.RefreshTokens{
-        AccessToken:  newAccessToken,
-        RefreshToken: newRefreshToken,
-    }, nil
+	return &responses.RefreshTokens{
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshToken,
+	}, nil
 }
 
 func (as *AccountService) doGenerateAndSend(ctx context.Context, userId uuid.UUID, email string) error {
@@ -164,11 +199,11 @@ func (as *AccountService) doGenerateAndSend(ctx context.Context, userId uuid.UUI
 }
 
 func (as *AccountService) Logout(ctx context.Context, refreshToken string) error {
-    return as.accountRepo.DeleteRefreshToken(ctx, refreshToken)
+	return as.accountRepo.DeleteRefreshToken(ctx, refreshToken)
 }
 
 func (as *AccountService) RepeatSendingCode(ctx context.Context, userID uuid.UUID) error {
-	user, err := as.accountRepo.GetUserEmailByID(ctx, userID) 
+	user, err := as.accountRepo.GetUserEmailByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -182,11 +217,13 @@ func NewAccountService(
 	emailProvider *utils.MailService,
 	passwordHasher *utils.PasswordHasher,
 	jwtManager *jwtmanager.JWTManager,
+	s3Manager *S3Manager,
 ) *AccountService {
 	return &AccountService{
 		accountRepo:   *accountRepo,
 		emailProvider: emailProvider,
 		passHasher:    passwordHasher,
 		jwtManager:    jwtManager,
+		s3Manager:     s3Manager,
 	}
 }

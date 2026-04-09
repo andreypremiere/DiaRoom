@@ -1,20 +1,33 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"regexp" 
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/andreypremiere/jwtmanager"
 )
 
+// Обертка для перехвата статус-кода ответа
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
 type ProxyHandler struct {
 	targets        map[string]*httputil.ReverseProxy
-	protectedPaths map[string][]*regexp.Regexp 
+	protectedPaths map[string][]*regexp.Regexp
 	jwtManager     *jwtmanager.JWTManager
 }
 
@@ -33,7 +46,7 @@ func (p *ProxyHandler) AddRoute(prefix string, targetAddress string, protected [
 	proxy.Director = func(r *http.Request) {
 		r.URL.Scheme = target.Scheme
 		r.URL.Host = target.Host
-		r.Host = target.Host 
+		r.Host = target.Host
 	}
 
 	p.targets[prefix] = proxy
@@ -49,76 +62,95 @@ func (p *ProxyHandler) AddRoute(prefix string, targetAddress string, protected [
 }
 
 func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    var targetPrefix string
-    var proxy *httputil.ReverseProxy
+	start := time.Now()
 
-    for prefix, prx := range p.targets {
-        if strings.HasPrefix(r.URL.Path, prefix) {
-            targetPrefix = prefix
-            proxy = prx
-            break
-        }
-    }
+	// Оборачиваем ResponseWriter
+	lrw := &loggingResponseWriter{w, http.StatusOK}
 
-    if proxy == nil {
-        http.Error(w, "Service Not Found", http.StatusNotFound)
-        return
-    }
+	defer func() {
+		// Логируем после завершения обработки
+		duration := time.Since(start)
+		log.Printf(
+			"[%s] %d | %-7s | %s | %s",
+			time.Now().Format("15:04:05"),
+			lrw.statusCode,
+			r.Method,
+			r.URL.Path,
+			duration,
+		)
+	}()
 
-    originalPath := r.URL.Path
+	var targetPrefix string
+	var proxy *httputil.ReverseProxy
 
-    needsAuth := false
-    for _, re := range p.protectedPaths[targetPrefix] {
-        if re.MatchString(originalPath) {
-            needsAuth = true
-            break
-        }
-    }
+	for prefix, prx := range p.targets {
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			targetPrefix = prefix
+			proxy = prx
+			break
+		}
+	}
 
-    if needsAuth {
-        authHeader := r.Header.Get("Authorization")
-        if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-            http.Error(w, "Unauthorized: Missing Token", http.StatusUnauthorized)
-            return
-        }
+	if proxy == nil {
+		http.Error(lrw, "Service Not Found", http.StatusNotFound)
+		return
+	}
 
-        tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-        claims, err := p.jwtManager.Verify(tokenString)
-        if err != nil {
-            http.Error(w, "Unauthorized: Invalid or Expired Token", http.StatusUnauthorized)
-            return
-        }
-        
-        // Пробрасываем данные в заголовках для микросервисов
-        r.Header.Set("X-User-ID", claims.UserId)
-        r.Header.Set("X-Room-ID", claims.RoomId)
-    }
+	originalPath := r.URL.Path
 
-    r.URL.Path = strings.TrimPrefix(r.URL.Path, targetPrefix)
-    
-    if r.URL.Path == "" {
-        r.URL.Path = "/"
-    }
+	needsAuth := false
+	for _, re := range p.protectedPaths[targetPrefix] {
+		if re.MatchString(originalPath) {
+			needsAuth = true
+			break
+		}
+	}
 
-    proxy.ServeHTTP(w, r)
+	if needsAuth {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			http.Error(lrw, "Unauthorized: Missing Token", http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		claims, err := p.jwtManager.Verify(tokenString)
+		if err != nil {
+			http.Error(lrw, "Unauthorized: Invalid or Expired Token", http.StatusUnauthorized)
+			return
+		}
+
+		r.Header.Set("X-User-ID", claims.UserId)
+		r.Header.Set("X-Room-ID", claims.RoomId)
+	}
+
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, targetPrefix)
+	if r.URL.Path == "" {
+		r.URL.Path = "/"
+	}
+
+	proxy.ServeHTTP(lrw, r)
 }
 
 func main() {
-    gateway := NewProxyHandler()
+	gateway := NewProxyHandler()
 
-    // Регистрация путей микросервиса постов
-    gateway.AddRoute("/post", "http://post-microservice:81", []string{
-        "/post/getPresignedUrls",
-        "/post/createPost",
-        "/post/publishPost",
-        "/post/[a-zA-Z0-9-]+/canvas", 
-    })
+	fmt.Println("API Gateway started on :80")
 
-    gateway.AddRoute("/rooms", "http://room-microservice:81", []string{
-        "/rooms/getRoomByRoomId",
-    })
+	gateway.AddRoute("/post", "http://post-microservice:81", []string{
+		"/post/getPresignedUrls",
+		"/post/createPost",
+		"/post/publishPost",
+		"/post/[a-zA-Z0-9-]+/canvas",
+	})
 
-	gateway.AddRoute("/account", "http://account-microservice:81", []string{})
+	gateway.AddRoute("/rooms", "http://room-microservice:81", []string{
+		"/rooms/getRoomByRoomId",
+	})
 
-    http.ListenAndServe(":80", gateway)
+	gateway.AddRoute("/account", "http://account-microservice:81", []string{
+		"/account/updateRoom",
+	})
+
+	log.Fatal(http.ListenAndServe(":80", gateway))
 }

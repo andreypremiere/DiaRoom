@@ -3,6 +3,7 @@ package main
 import (
 	"account-microservice/contracts/account/requests"
 	"account-microservice/contracts/account/responses"
+	"account-microservice/database"
 	"account-microservice/repositories"
 	"account-microservice/services"
 	"account-microservice/utils"
@@ -206,7 +207,7 @@ func (a *App) refreshSession(w http.ResponseWriter, r *http.Request) {
 	// Если токен истек или его нет
     response, err := a.accountService.RefreshSession(r.Context(), request.RefreshToken)
     if err != nil {
-        a.sendError(w, "Сессия недействительна: "+err.Error(), http.StatusUnauthorized)
+        a.sendError(w, "Сессия недействительна: "+err.Error(), http.StatusBadRequest)
         return
     }
 
@@ -242,6 +243,77 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
     }
 
     w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) getRoom(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        a.sendError(w, "Данный метод поддерживает только Get запросы", http.StatusMethodNotAllowed)
+        return
+    }
+
+	roomIDStr := r.PathValue("roomId")
+    if roomIDStr == "" {
+        a.sendError(w, "ID комнаты не указан", http.StatusBadRequest)
+        return
+    }
+
+    roomId, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        return
+    }
+
+    room, err := a.accountService.GetRoom(r.Context(), roomId)
+    if err != nil {
+        a.sendError(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(room)
+}
+
+func (a *App) updateRoom(w http.ResponseWriter, r *http.Request) {
+    // 1. Проверка метода
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        return
+    }
+
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        return
+    }
+
+    // Извлекаем данные из заголовков
+    roomID := r.Header.Get("X-Room-ID")
+
+    roomId, err := uuid.Parse(roomID)
+    if err != nil {
+        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        return
+    }
+
+    // Декодируем тело запроса
+    var request requests.UpdateRoomRequest // Твоя структура с json тегами
+    decoder := json.NewDecoder(r.Body)
+    decoder.DisallowUnknownFields()
+
+    if err := decoder.Decode(&request); err != nil {
+        a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+        return
+    }
+
+    response, err := a.accountService.UpdateRoom(r.Context(), roomId, &request)
+    if err != nil {
+        a.sendError(w, "Не удалось обновить данные: " + err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(response)
 }
 
 
@@ -280,17 +352,22 @@ func main() {
 		Password: os.Getenv("SMTP_PASSWORD"),
 	}
 
+    // Настройка S3 клиента
+    s3Client := database.InitS3Client()
+
+    s3Manager := services.NewS3Manager(s3Client, "avatars-diaroom-1")
+
 	emailProvider := utils.NewMailService(emailConfig)
 
 	var newPasswordHasher *utils.PasswordHasher = utils.NewPasswordHasher(10)
 
 	secretJwt := os.Getenv("JWT_SECRET")
 
-	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 15*time.Minute)
+	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 2*time.Minute)
 
 	accountRepo := repositories.NewAccountRepository(poolPg, rdb)
 
-	accountService := services.NewAccountService(accountRepo, emailProvider, newPasswordHasher, jwtmanager)
+	accountService := services.NewAccountService(accountRepo, emailProvider, newPasswordHasher, jwtmanager, s3Manager)
 	
 
 	app := &App{
@@ -305,6 +382,8 @@ func main() {
 	mux.HandleFunc("POST /repeatCode/{userId}", app.repeatCode)
 	mux.HandleFunc("POST /refreshSession", app.refreshSession)
 	mux.HandleFunc("POST /logout", app.logout)
+    mux.HandleFunc("GET /room/{roomId}", app.getRoom)
+    mux.HandleFunc("POST /updateRoom", app.updateRoom)
 
 	fmt.Println("Сервер запущен на :81")
 	if err := http.ListenAndServe(":81", mux); err != nil {

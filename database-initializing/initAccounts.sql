@@ -16,9 +16,9 @@ CREATE TABLE IF NOT EXISTS rooms (
     user_id UUID NOT NULL UNIQUE,
     room_name VARCHAR(100) NOT NULL,
     room_unique_id VARCHAR(100) NOT NULL UNIQUE,
-    avatar_url TEXT,
-    background_url TEXT,
-    bio TEXT,
+    avatar_url TEXT DEFAULT '',
+    background_url TEXT DEFAULT '',
+    bio TEXT DEFAULT '',
     settings JSONB NOT NULL DEFAULT '{}',
     followers_count INT NOT NULL DEFAULT 0,
     following_count INT NOT NULL DEFAULT 0,
@@ -29,27 +29,20 @@ CREATE TABLE IF NOT EXISTS rooms (
         ON DELETE CASCADE
 );
 
--- 4. Справочник категорий
+-- Таблица категорий
 CREATE TABLE IF NOT EXISTS categories (
-    id SERIAL PRIMARY KEY,
-    slug VARCHAR(50) NOT NULL UNIQUE,
+    slug VARCHAR(50) PRIMARY KEY, -- Теперь это PK
     name VARCHAR(50) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Связующая таблица (Многие-ко-многим)
+-- Связующая таблица
 CREATE TABLE IF NOT EXISTS room_categories (
     room_id UUID NOT NULL,
-    category_id INTEGER NOT NULL,
-    PRIMARY KEY (room_id, category_id),
-    CONSTRAINT fk_room
-        FOREIGN KEY (room_id)
-        REFERENCES rooms(id)
-        ON DELETE CASCADE,
-    CONSTRAINT fk_category
-        FOREIGN KEY (category_id)
-        REFERENCES categories(id)
-        ON DELETE CASCADE
+    category_slug VARCHAR(50) NOT NULL, -- Ссылаемся на слаг
+    PRIMARY KEY (room_id, category_slug),
+    CONSTRAINT fk_room FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    CONSTRAINT fk_category FOREIGN KEY (category_slug) REFERENCES categories(slug) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- 6. Сессии пользователей
