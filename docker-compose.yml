@@ -127,7 +127,7 @@ services:
       POSTGRES_PASSWORD: "1111"
       POSTGRES_DB: db_posts
     ports:
-      - "5435:5432"
+      - "5436:5432"
     volumes:
       - ./postgresql-posts:/var/lib/postgresql
     networks:

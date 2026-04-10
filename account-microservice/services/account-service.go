@@ -55,7 +55,19 @@ func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, 
 
 func (as *AccountService) GetRoom(context context.Context, roomId uuid.UUID) (*responses.RoomResponse, error) {
 	room, err := as.accountRepo.GetRoom(context, roomId)
-	return room, err
+	if err != nil {
+		return nil, err
+	}
+
+	if (room.AvatarPath != "") {
+		room.AvatarPath = as.s3Manager.FormatFullURL(room.AvatarPath)
+	}
+
+	if (room.BackgroundPath != "") {
+		room.BackgroundPath = as.s3Manager.FormatFullURL(room.BackgroundPath)
+	}
+
+	return room, nil
 }
 
 func (as *AccountService) VerifyCode(context context.Context, userVerify *requests.VerifyUser) (*responses.AuthResponse, error) {

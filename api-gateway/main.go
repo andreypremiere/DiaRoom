@@ -149,7 +149,7 @@ func main() {
 	})
 
 	gateway.AddRoute("/account", "http://account-microservice:81", []string{
-		"/account/updateRoom",
+		"/account/updateRoom", "/account/room/[a-zA-Z0-9-]+",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

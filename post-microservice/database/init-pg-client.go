@@ -43,5 +43,7 @@ func InitPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("unable to ping database: %w", err)
 	}
 
+	fmt.Println("Пул соединений инициализирован")
+
 	return pool, nil
 }

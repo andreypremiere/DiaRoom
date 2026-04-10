@@ -156,5 +156,7 @@ func main() {
     // Путь будет: /post/{postId}/canvas
     r.Post("/{postId}/canvas", app.SaveCanvasHandler)
 
+	fmt.Println("Сервер запущен")
+
     http.ListenAndServe(":81", r) // Передаем 'r' вместо 'nil'
 }
