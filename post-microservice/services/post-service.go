@@ -30,6 +30,7 @@ type PostServiceInter interface {
 	GenerateMediaUrls(ctx context.Context, roomID uuid.UUID, req models.GenerateUrlsRequest) (*models.GenerateUrlsResponse, error)
 	CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error
 	GetAllPosts(ctx context.Context) ([]responses.Post, error)
+	GetPostForShowing(ctx context.Context, postId uuid.UUID) (*responses.ShowingPost, error)
 }
 
 type PostService struct {
@@ -37,6 +38,26 @@ type PostService struct {
 	s3Client   *s3.Client
 	bucketMediaName string
 	accountClient *clients.AccountClient
+}
+
+func (s *PostService) GetPostForShowing(ctx context.Context, postId uuid.UUID) (*responses.ShowingPost, error) {
+	post, err := s.repo.GetPostForShowing(ctx, postId)
+	if err != nil {
+		return nil, errors.Join(err, errors.New("Ошибка получения поста в бд"))
+	}
+
+	// Вызов клиента по получению данных
+	roomInfo, err := s.accountClient.GetAuthor(ctx, post.RoomId)
+	if err != nil {
+		fmt.Println("Возникала ошибка при получении данных автора" + err.Error())
+		return post, nil 
+	}
+	// Объединение
+
+	post.AvatarUrl = roomInfo.AvatarUrl
+	post.RoomName = roomInfo.RoomName
+
+	return post, nil 
 }
 
 func (s *PostService) GetAllPosts(ctx context.Context) ([]responses.Post, error) {

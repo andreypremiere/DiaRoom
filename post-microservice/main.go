@@ -143,6 +143,38 @@ func (a *App) GetAllPosts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) GetPost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+        a.sendError(w, "Данный метод поддерживает только Get запросы", http.StatusMethodNotAllowed)
+        return
+    }
+
+	postIDStr := r.PathValue("postId")
+	if postIDStr == "" {
+		a.sendError(w, "Post ID is required", http.StatusBadRequest)
+		return
+	}
+
+	postID, err := uuid.Parse(postIDStr)
+	if err != nil {
+		a.sendError(w, "Invalid post ID format", http.StatusBadRequest)
+		return
+	}
+
+	post, err := a.service.GetPostForShowing(r.Context(), postID)
+	if err != nil {
+		a.sendError(w, "Ошибка получения всех постов" + err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(post); err != nil {
+		a.sendError(w, "Ошибка при формировании ответа", http.StatusInternalServerError)
+		return
+	}
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -177,6 +209,7 @@ func main() {
 	mux.HandleFunc("POST /getPresignedUrls", app.GetPresignedUrls)
 	mux.HandleFunc("POST /{postId}/canvas", app.SaveCanvasHandler)
 	mux.HandleFunc("GET /allPosts", app.GetAllPosts)
+	mux.HandleFunc("GET /getPost/{postId}", app.GetPost)
 
 	fmt.Println("Сервер постов запущен на порту :81")
 

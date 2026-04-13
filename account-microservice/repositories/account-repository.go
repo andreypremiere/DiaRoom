@@ -21,15 +21,37 @@ type AccountRepository struct {
 	redisClient *redis.Client
 }
 
-func (ar AccountRepository) UpdateRoom(ctx context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) error {
-    tx, err := ar.poolPg.Begin(ctx)
-    if err != nil {
-        return fmt.Errorf("failed to begin transaction: %w", err)
-    }
-    defer tx.Rollback(ctx)
+func (ar AccountRepository) GetRoomInfo(context context.Context, id uuid.UUID) (*responses.RoomInfo, error) {
+	query := `
+		SELECT avatar_url, room_name 
+		FROM rooms 
+		WHERE id = $1
+		LIMIT 1
+	`
 
-    // 1. Обновляем данные комнаты
-    roomQuery := `
+	var info responses.RoomInfo
+
+	err := ar.poolPg.QueryRow(context, query, id).Scan(
+		&info.AvatarUrl,
+		&info.RoomName,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("room info not found: %w", err)
+	}
+
+	return &info, nil
+}
+
+func (ar AccountRepository) UpdateRoom(ctx context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) error {
+	tx, err := ar.poolPg.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Обновляем данные комнаты
+	roomQuery := `
         UPDATE rooms 
         SET 
             room_name = $1, 
@@ -40,55 +62,55 @@ func (ar AccountRepository) UpdateRoom(ctx context.Context, roomId uuid.UUID, re
         WHERE id = $6
         RETURNING user_id` // Возвращаем user_id, чтобы обновить статус пользователя
 
-    var userId uuid.UUID
-    err = tx.QueryRow(ctx, roomQuery,
-        request.RoomName,
-        request.RoomUniqueID,
-        request.Bio,
-        request.AvatarFileName,
-        request.BackgroundFileName,
-        roomId,
-    ).Scan(&userId)
+	var userId uuid.UUID
+	err = tx.QueryRow(ctx, roomQuery,
+		request.RoomName,
+		request.RoomUniqueID,
+		request.Bio,
+		request.AvatarFileName,
+		request.BackgroundFileName,
+		roomId,
+	).Scan(&userId)
 
-    if err != nil {
-        if err == pgx.ErrNoRows {
-            return fmt.Errorf("room not found")
-        }
-        return fmt.Errorf("failed to update rooms table: %w", err)
-    }
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("room not found")
+		}
+		return fmt.Errorf("failed to update rooms table: %w", err)
+	}
 
-    // 2. Обновляем статус пользователя в таблице users
-    userQuery := `UPDATE users SET is_configured = true WHERE id = $1`
-    _, err = tx.Exec(ctx, userQuery, userId)
-    if err != nil {
-        return fmt.Errorf("failed to update user configuration status: %w", err)
-    }
+	// 2. Обновляем статус пользователя в таблице users
+	userQuery := `UPDATE users SET is_configured = true WHERE id = $1`
+	_, err = tx.Exec(ctx, userQuery, userId)
+	if err != nil {
+		return fmt.Errorf("failed to update user configuration status: %w", err)
+	}
 
-    // 3. Синхронизируем категории
-    _, err = tx.Exec(ctx, "DELETE FROM room_categories WHERE room_id = $1", roomId)
-    if err != nil {
-        return fmt.Errorf("failed to clear old categories: %w", err)
-    }
+	// 3. Синхронизируем категории
+	_, err = tx.Exec(ctx, "DELETE FROM room_categories WHERE room_id = $1", roomId)
+	if err != nil {
+		return fmt.Errorf("failed to clear old categories: %w", err)
+	}
 
-    if len(request.Categories) > 0 {
-        for _, slug := range request.Categories {
-            _, err = tx.Exec(ctx, `
+	if len(request.Categories) > 0 {
+		for _, slug := range request.Categories {
+			_, err = tx.Exec(ctx, `
                 INSERT INTO room_categories (room_id, category_slug) 
-                VALUES ($1, $2)`, 
-                roomId, slug,
-            )
-            if err != nil {
-                return fmt.Errorf("failed to insert category %s: %w", slug, err)
-            }
-        }
-    }
+                VALUES ($1, $2)`,
+				roomId, slug,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to insert category %s: %w", slug, err)
+			}
+		}
+	}
 
-    // 4. Коммитим всё вместе
-    if err := tx.Commit(ctx); err != nil {
-        return fmt.Errorf("failed to commit transaction: %w", err)
-    }
+	// 4. Коммитим всё вместе
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
 
-    return nil
+	return nil
 }
 
 func (ar AccountRepository) GetRoom(context context.Context, roomId uuid.UUID) (*responses.RoomResponse, error) {
@@ -136,43 +158,43 @@ func (ar *AccountRepository) AddCodeWithTimeout(
 }
 
 func (r *AccountRepository) GetRoomsInfoByIds(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]responses.RoomInfo, error) {
-    // В запросе выбираем ID, чтобы знать, к какой комнате относятся данные
-    query := `
+	// В запросе выбираем ID, чтобы знать, к какой комнате относятся данные
+	query := `
         SELECT id, room_name, avatar_url 
         FROM rooms 
         WHERE id = ANY($1)
     `
 
-    rows, err := r.poolPg.Query(ctx, query, ids)
-    if err != nil {
-        return nil, fmt.Errorf("query error: %w", err)
-    }
-    defer rows.Close()
+	rows, err := r.poolPg.Query(ctx, query, ids)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
 
-    result := make(map[uuid.UUID]responses.RoomInfo)
+	result := make(map[uuid.UUID]responses.RoomInfo)
 
-    for rows.Next() {
-        var id uuid.UUID
-        var info responses.RoomInfo
-        
-        err := rows.Scan(
-            &id, 
-            &info.RoomName, 
-            &info.AvatarUrl,
-        )
-        if err != nil {
-            return nil, fmt.Errorf("scan error: %w", err)
-        }
-        
-        result[id] = info
-    }
+	for rows.Next() {
+		var id uuid.UUID
+		var info responses.RoomInfo
 
-    // Проверяем, не было ли ошибок при итерации
-    if err = rows.Err(); err != nil {
-        return nil, err
-    }
+		err := rows.Scan(
+			&id,
+			&info.RoomName,
+			&info.AvatarUrl,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
 
-    return result, nil
+		result[id] = info
+	}
+
+	// Проверяем, не было ли ошибок при итерации
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func (ar *AccountRepository) NewAccount(ctx context.Context, email string, userID, roomID uuid.UUID, roomUniqueId, roomName, hashPassword string) error {

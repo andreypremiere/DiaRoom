@@ -19,12 +19,52 @@ type PostRepositoryInter interface {
 	InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error
     PushPostToQueue(ctx context.Context, postID uuid.UUID) error
     GetAllPosts(ctx context.Context) ([]responses.PostInfo, error)
+    GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error)
 }
 
 type PostRepository struct {
 	db *pgxpool.Pool	
     redis *redis.Client
 
+}
+
+func (r *PostRepository) GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error) {
+	query := `
+		SELECT 
+			p.room_id, 
+			c.payload, 
+			cat.slug, 
+			p.views_count, 
+			p.likes_count,
+			COALESCE(
+				(SELECT array_agg(h.name) 
+				 FROM posts_hashtags ph 
+				 JOIN hashtags h ON ph.hashtag_id = h.id 
+				 WHERE ph.post_id = p.id), 
+				'{}'
+			) as hashtags
+		FROM posts p
+		INNER JOIN canvases c ON p.canvas_id = c.id
+		INNER JOIN categories cat ON p.category_id = cat.id
+		WHERE p.id = $1 AND p.is_deleted = FALSE
+	`
+
+	var post responses.ShowingPost
+	
+	err := r.db.QueryRow(ctx, query, postID).Scan(
+		&post.RoomId,
+		&post.Canvas,
+		&post.Category,
+		&post.ViewsCount,
+		&post.LikesCount,
+		&post.Hashtags,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch post: %w", err)
+	}
+
+	return &post, nil
 }
 
 func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo, error) {

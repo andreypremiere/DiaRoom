@@ -1,11 +1,10 @@
 package responses
 
-import "github.com/google/uuid"
+import (
+	"encoding/json"
 
-type RoomInfo struct {
-	AvatarUrl string `json:"avatarUrl"`
-	RoomName string `json:"roomName"`
-}
+	"github.com/google/uuid"
+)
 
 type PostInfo struct {
 	Id uuid.UUID `json:"postId"`
@@ -21,4 +20,19 @@ type PostInfo struct {
 type Post struct {
 	RoomInfo
 	PostInfo
+}
+
+type RoomInfo struct {
+	AvatarUrl string `json:"avatarUrl"`
+	RoomName string `json:"roomName"`
+}
+
+type ShowingPost struct {
+	RoomInfo
+	RoomId uuid.UUID `json:"roomId"`
+	Canvas json.RawMessage `json:"payload"`
+	Category string `json:"categorySlug"`
+	Hashtags []string `json:"hashtags"`
+	ViewsCount int `json:"viewsCount"`
+	LikesCount int `json:"likesCount"`
 }

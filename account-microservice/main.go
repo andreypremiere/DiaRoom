@@ -343,6 +343,34 @@ func (a *App) getRoomsInfo(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(roomsMap)
 }
 
+func (a *App) getRoomInfo(w http.ResponseWriter, r *http.Request) {
+    // 1. Только POST
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+        return
+    }
+
+    // 2. Декодируем список ID
+    var req struct {
+        RoomId uuid.UUID `json:"room_id"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        a.sendError(w, "Некорректный JSON", http.StatusBadRequest)
+        return
+    }
+
+    // 3. Вызов сервиса
+    room, err := a.accountService.GetRoomInfo(r.Context(), req.RoomId)
+    if err != nil {
+        a.sendError(w, "Ошибка при получении данных комнаты" + err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(room)
+}
+
 
 func main() {
 	// Создание фонового контекста для инициализации ресурсов
@@ -403,6 +431,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
+    // Для gateway
     mux.HandleFunc("POST /newAccount", app.newAccount)
     mux.HandleFunc("POST /verify/{userId}", app.verify) 
     mux.HandleFunc("POST /login", app.LoginUser)
@@ -411,7 +440,10 @@ func main() {
 	mux.HandleFunc("POST /logout", app.logout)
     mux.HandleFunc("GET /room/{roomId}", app.getRoom)
     mux.HandleFunc("POST /updateRoom", app.updateRoom)
-    mux.HandleFunc("POST /getRoomsInfo", app.getRoomsInfo)
+
+    //Внутренние
+    mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)
+    mux.HandleFunc("POST /getRoomInfoInternal", app.getRoomInfo)
 
 	fmt.Println("Сервер запущен на :81")
 	if err := http.ListenAndServe(":81", mux); err != nil {

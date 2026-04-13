@@ -23,6 +23,17 @@ type AccountService struct {
 	s3Manager     *S3Manager
 }
 
+func (as *AccountService) GetRoomInfo(context context.Context, id uuid.UUID) (*responses.RoomInfo, error) {
+	room, err := as.accountRepo.GetRoomInfo(context, id)
+	if err != nil {
+		return nil, errors.Join(errors.New("Ошибка в бд "), err)
+	}
+
+	room.AvatarUrl = as.s3Manager.FormatFullURL(room.AvatarUrl)
+
+	return room, nil
+}
+
 func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) (*responses.UpdateRoomResponse, error) {
 	var response responses.UpdateRoomResponse
 
@@ -50,13 +61,13 @@ func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, 
 		return nil, err
 	}
 
-	return &response, nil 
+	return &response, nil
 }
 
 func (s *AccountService) GetRoomsInfoBatch(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]responses.RoomInfo, error) {
-    if len(ids) == 0 {
-        return make(map[uuid.UUID]responses.RoomInfo), nil
-    }
+	if len(ids) == 0 {
+		return make(map[uuid.UUID]responses.RoomInfo), nil
+	}
 
 	result, err := s.accountRepo.GetRoomsInfoByIds(ctx, ids)
 	if err != nil {
@@ -65,11 +76,11 @@ func (s *AccountService) GetRoomsInfoBatch(ctx context.Context, ids []uuid.UUID)
 
 	for id, room := range result {
 		room.AvatarUrl = s.s3Manager.FormatFullURL(room.AvatarUrl)
-    	result[id] = room
+		result[id] = room
 	}
 
-    // Здесь можно добавить логику кеширования в Redis, если данные часто запрашиваются
-    return result, nil
+	// Здесь можно добавить логику кеширования в Redis, если данные часто запрашиваются
+	return result, nil
 }
 
 func (as *AccountService) GetRoom(context context.Context, roomId uuid.UUID) (*responses.RoomResponse, error) {
@@ -78,11 +89,11 @@ func (as *AccountService) GetRoom(context context.Context, roomId uuid.UUID) (*r
 		return nil, err
 	}
 
-	if (room.AvatarPath != "") {
+	if room.AvatarPath != "" {
 		room.AvatarPath = as.s3Manager.FormatFullURL(room.AvatarPath)
 	}
 
-	if (room.BackgroundPath != "") {
+	if room.BackgroundPath != "" {
 		room.BackgroundPath = as.s3Manager.FormatFullURL(room.BackgroundPath)
 	}
 
