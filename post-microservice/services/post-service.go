@@ -3,12 +3,15 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
 	"time"
 
 	// "path/filepath"
+	"post-microservice/clients"
+	"post-microservice/contracts/responses"
 	"post-microservice/models"
 	"post-microservice/repositories"
 
@@ -26,12 +29,53 @@ type PostServiceInter interface {
     CreatePost(ctx context.Context, req models.CreatePostRequest) (*models.CreatePostResponse, error)
 	GenerateMediaUrls(ctx context.Context, roomID uuid.UUID, req models.GenerateUrlsRequest) (*models.GenerateUrlsResponse, error)
 	CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error
+	GetAllPosts(ctx context.Context) ([]responses.Post, error)
 }
 
 type PostService struct {
 	repo repositories.PostRepositoryInter
 	s3Client   *s3.Client
 	bucketMediaName string
+	accountClient *clients.AccountClient
+}
+
+func (s *PostService) GetAllPosts(ctx context.Context) ([]responses.Post, error) {
+	postsInfo, err := s.repo.GetAllPosts(ctx)
+	if err != nil {
+		return nil, errors.New("Ошибка при запросе постов в бд")
+	}
+
+	for i := range postsInfo {
+		postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
+	}
+
+	if len(postsInfo) == 0 {
+		return []responses.Post{}, nil
+	}
+
+	roomIDs := make([]uuid.UUID, 0)
+	seen := make(map[uuid.UUID]bool)
+	for _, p := range postsInfo {
+		if !seen[p.RoomId] {
+			seen[p.RoomId] = true
+			roomIDs = append(roomIDs, p.RoomId)
+		}
+	}
+
+	roomsInfo, err := s.accountClient.GetAuthorsBatch(ctx, roomIDs)
+	if err != nil {
+		fmt.Println("Ошибка получения roomsInfo в post-service" + err.Error())
+	}
+
+	result := make([]responses.Post, len(postsInfo))
+	for i, info := range postsInfo {
+		result[i] = responses.Post{
+			PostInfo: info,
+			RoomInfo: roomsInfo[info.RoomId], 
+		}
+	}
+
+	return result, nil
 }
 
 func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error {
@@ -224,7 +268,7 @@ func (s *PostService) generatePresignedAndPublicURL(ctx context.Context, objectK
 // 	return req.URL, nil
 // }
 
-func NewPostService(repository repositories.PostRepositoryInter, s3Client *s3.Client, bucketMediaName string) *PostService {
-	return &PostService{repo: repository, s3Client: s3Client, bucketMediaName: bucketMediaName}
+func NewPostService(repository repositories.PostRepositoryInter, s3Client *s3.Client, bucketMediaName string, accountClient *clients.AccountClient) *PostService {
+	return &PostService{repo: repository, s3Client: s3Client, bucketMediaName: bucketMediaName, accountClient: accountClient}
 }
 

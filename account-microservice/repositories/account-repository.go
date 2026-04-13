@@ -135,6 +135,46 @@ func (ar *AccountRepository) AddCodeWithTimeout(
 	return err
 }
 
+func (r *AccountRepository) GetRoomsInfoByIds(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]responses.RoomInfo, error) {
+    // В запросе выбираем ID, чтобы знать, к какой комнате относятся данные
+    query := `
+        SELECT id, room_name, avatar_url 
+        FROM rooms 
+        WHERE id = ANY($1)
+    `
+
+    rows, err := r.poolPg.Query(ctx, query, ids)
+    if err != nil {
+        return nil, fmt.Errorf("query error: %w", err)
+    }
+    defer rows.Close()
+
+    result := make(map[uuid.UUID]responses.RoomInfo)
+
+    for rows.Next() {
+        var id uuid.UUID
+        var info responses.RoomInfo
+        
+        err := rows.Scan(
+            &id, 
+            &info.RoomName, 
+            &info.AvatarUrl,
+        )
+        if err != nil {
+            return nil, fmt.Errorf("scan error: %w", err)
+        }
+        
+        result[id] = info
+    }
+
+    // Проверяем, не было ли ошибок при итерации
+    if err = rows.Err(); err != nil {
+        return nil, err
+    }
+
+    return result, nil
+}
+
 func (ar *AccountRepository) NewAccount(ctx context.Context, email string, userID, roomID uuid.UUID, roomUniqueId, roomName, hashPassword string) error {
 	// Начинаем транзакцию
 	tx, err := ar.poolPg.Begin(ctx)

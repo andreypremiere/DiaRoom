@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"post-microservice/contracts/responses"
 	"post-microservice/models"
 
 	"github.com/google/uuid"
@@ -17,12 +18,66 @@ type PostRepositoryInter interface {
 	AddHashtagsToPost(ctx context.Context, postID uuid.UUID, hashtags []string) error
 	InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error
     PushPostToQueue(ctx context.Context, postID uuid.UUID) error
+    GetAllPosts(ctx context.Context) ([]responses.PostInfo, error)
 }
 
 type PostRepository struct {
 	db *pgxpool.Pool	
     redis *redis.Client
 
+}
+
+func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo, error) {
+	// SQL запрос с JOIN для получения slug категории
+	query := `
+		SELECT 
+			p.id, 
+			p.room_id, 
+			p.preview_url, 
+			c.slug as category_slug, 
+			p.canvas_id, 
+			p.title, 
+			p.views_count, 
+			p.likes_count
+		FROM posts p
+		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.status = 'published' 
+		  AND p.is_deleted = FALSE
+          AND p.canvas_id IS NOT NULL
+		ORDER BY p.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []responses.PostInfo
+
+	for rows.Next() {
+		var p responses.PostInfo
+		err := rows.Scan(
+			&p.Id,
+			&p.RoomId,
+			&p.PreviewUrl,
+			&p.Category,
+			&p.CanvasId,
+			&p.Title,
+			&p.ViewsCount,
+			&p.LikesCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка сканирования строки: %w", err)
+		}
+		posts = append(posts, p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return posts, nil
 }
 
 func (r *PostRepository) UpdatePostPreviewURL(ctx context.Context, postID uuid.UUID, previewURL string) error {

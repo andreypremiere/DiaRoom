@@ -10,14 +10,13 @@ import (
 )
 
 func InitPool(ctx context.Context) (*pgxpool.Pool, error) {
-	// Собираем DSN из переменных окружения Docker
-	// Пример: postgres://user:password@localhost:5432/dbname
+
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		"postgres",
-		os.Getenv("DB_PASSWORD"),
-		"postgresql-posts",
-		"5432",
-		"db_posts",
+		os.Getenv("POST_DB_USER"),
+		os.Getenv("POST_DB_PASSWORD"),
+		os.Getenv("POST_DB_HOST"),
+		os.Getenv("POST_DB_PORT"),
+		os.Getenv("POST_DB_NAMEBASE"),
 	)
 
 	// Создаем конфиг пула

@@ -316,6 +316,33 @@ func (a *App) updateRoom(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(response)
 }
 
+func (a *App) getRoomsInfo(w http.ResponseWriter, r *http.Request) {
+    // 1. Только POST
+    if r.Method != http.MethodPost {
+        a.sendError(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+        return
+    }
+
+    // 2. Декодируем список ID
+    var req requests.GetRoomsBatch
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        a.sendError(w, "Некорректный JSON", http.StatusBadRequest)
+        return
+    }
+
+    // 3. Вызов сервиса
+    roomsMap, err := a.accountService.GetRoomsInfoBatch(r.Context(), req.UserIDs)
+    if err != nil {
+        a.sendError(w, "Ошибка при получении данных комнат", http.StatusInternalServerError)
+        return
+    }
+
+    // 4. Отправка мапы map[uuid]RoomInfo
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(roomsMap)
+}
+
 
 func main() {
 	// Создание фонового контекста для инициализации ресурсов
@@ -384,6 +411,7 @@ func main() {
 	mux.HandleFunc("POST /logout", app.logout)
     mux.HandleFunc("GET /room/{roomId}", app.getRoom)
     mux.HandleFunc("POST /updateRoom", app.updateRoom)
+    mux.HandleFunc("POST /getRoomsInfo", app.getRoomsInfo)
 
 	fmt.Println("Сервер запущен на :81")
 	if err := http.ListenAndServe(":81", mux); err != nil {

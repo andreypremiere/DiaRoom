@@ -3,12 +3,19 @@ package database
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/redis/go-redis/v9"
 )
 
 func InitRedisQueue() *redis.Client {
 	// В Docker Compose хост будет "redis-queue", локально — "localhost"
-	addr := "redis-queue:6379"
+	
+
+	addr := fmt.Sprintf("%s:%s",
+		os.Getenv("REDIS_QUEUE_HOST"),
+		os.Getenv("REDIS_QUEUE_POST"),
+	)
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     addr,
