@@ -42,18 +42,6 @@ services:
     networks:
       - backend-application
 
-  user-microservice:
-    build: ./user-microservice
-    container_name: user-microservice
-    env_file:
-      - .env
-    ports:
-      - "8081:81"
-    volumes:
-      - ./user-microservice:/app
-    networks:
-      - backend-application
-
   account-microservice:
     build: ./account-microservice
     container_name: account-microservice
@@ -63,30 +51,6 @@ services:
       - "8084:81"
     volumes:
       - ./account-microservice:/app
-    networks:
-      - backend-application
-
-  room-microservice:
-    build: ./room-microservice
-    container_name: room-microservice
-    ports:
-      - "8082:81"
-    volumes:
-      - ./room-microservice:/app
-    networks:
-      - backend-application
-
-  postgresql-users:
-    image: postgres:18.2-alpine3.23
-    container_name: postgresql-users
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "1111"
-      POSTGRES_DB: db_users
-    ports:
-      - "5434:5432"
-    volumes:
-      - ./postgresql-users:/var/lib/postgresql
     networks:
       - backend-application
 
@@ -101,21 +65,6 @@ services:
       - "5435:5432"
     volumes:
       - ./postgresql-accounts:/var/lib/postgresql
-    networks:
-      - backend-application
-
-
-  postgresql-rooms:
-    image: postgres:18.2-alpine3.23
-    container_name: postgresql-rooms
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "1111"
-      POSTGRES_DB: db_rooms
-    ports:
-      - "5433:5432"
-    volumes:
-      - ./postgresql-rooms:/var/lib/postgresql
     networks:
       - backend-application
 
