@@ -1,6 +1,7 @@
 package main
 
 import (
+	apperrors "account-microservice/app-errors"
 	"account-microservice/contracts/account/requests"
 	"account-microservice/contracts/account/responses"
 	"account-microservice/database"
@@ -9,6 +10,7 @@ import (
 	"account-microservice/utils"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -26,20 +28,45 @@ type App struct {
 	// roomService services.RoomServiceInter
 }
 
-func (a *App) sendError(w http.ResponseWriter, message string, status int) {
+func (a *App) sendError(w http.ResponseWriter, err error) {
+    var appErr apperrors.AppError
+    
+    // По умолчанию считаем ошибку внутренней (500)
+    status := http.StatusInternalServerError
+    
+    if errors.As(err, &appErr) {
+        switch appErr.Code {
+        case "NOT_FOUND":
+            status = http.StatusNotFound
+        case "ALREADY_EXISTS":
+            status = http.StatusConflict
+        case "METHOD_NOT_ALLOWED":
+            status = http.StatusMethodNotAllowed 
+        case "UNSUPPORTED_TYPE":
+            status = http.StatusUnsupportedMediaType 
+        default:
+            status = http.StatusBadRequest
+        }
+    } else {
+        appErr = apperrors.ErrInternal
+    }
+
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(status)
-    json.NewEncoder(w).Encode(map[string]string{"error": message})
+    json.NewEncoder(w).Encode(map[string]string{
+        "error_code": appErr.Code,
+        "message":    appErr.Message,
+    })
 }
 
 func (a *App) newAccount(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
-        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
     if r.Header.Get("Content-Type") != "application/json" {
-        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        a.sendError(w, apperrors.ErrUnsupportedType)
         return
     }
 
@@ -48,13 +75,13 @@ func (a *App) newAccount(w http.ResponseWriter, r *http.Request) {
     decoder.DisallowUnknownFields() 
     
     if err := decoder.Decode(&newAccount); err != nil {
-        a.sendError(w, "Не удалось раскодировать тело запроса", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
     newId, err := a.accountService.NewAccount(r.Context(), &newAccount)
     if err != nil {
-        a.sendError(w, err.Error(), http.StatusInternalServerError)
+        a.sendError(w, err)
         return
     }
 
@@ -65,24 +92,24 @@ func (a *App) newAccount(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) verify(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
-        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
     if r.Header.Get("Content-Type") != "application/json" {
-        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        a.sendError(w, apperrors.ErrUnsupportedType)
         return
     }
 
     userIDStr := r.PathValue("userId")
     if userIDStr == "" {
-        a.sendError(w, "ID пользователя не указан", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
     userID, err := uuid.Parse(userIDStr)
     if err != nil {
-        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
@@ -92,7 +119,7 @@ func (a *App) verify(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields() 
 
 	if err := decoder.Decode(&userVerify); err != nil {
-		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+		a.sendError(w, err)
 		return
 	}
 
@@ -101,19 +128,7 @@ func (a *App) verify(w http.ResponseWriter, r *http.Request) {
     response, err := a.accountService.VerifyCode(r.Context(), &userVerify)
 
     if err != nil {
-		if err.Error() == "user did not confirm the email" {
-			a.sendError(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		if err.Error() == "couldn't update status" {
-			a.sendError(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err.Error() == "roomId search error" {
-			a.sendError(w, err.Error(), http.StatusNotFound)
-			return
-		}
-        a.sendError(w, "Ошибка верификации: " + err.Error(), http.StatusBadRequest)
+        a.sendError(w, err)
         return
     }
 
@@ -124,12 +139,12 @@ func (a *App) verify(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
-        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
     if r.Header.Get("Content-Type") != "application/json" {
-        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        a.sendError(w, apperrors.ErrUnsupportedType)
         return
     }
 
@@ -139,13 +154,13 @@ func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields() 
 
 	if err := decoder.Decode(&loginUser); err != nil {
-		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+		a.sendError(w, apperrors.ErrInternal)
 		return
 	}
 
 	user, err := a.accountService.LoginUser(r.Context(), &loginUser)
 	if err != nil {
-		a.sendError(w, err.Error(), http.StatusBadRequest)
+		a.sendError(w, err)
 		return
 	}
 
@@ -156,19 +171,19 @@ func (a *App) LoginUser(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) repeatCode(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
-        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
 	userIDStr := r.PathValue("userId")
     if userIDStr == "" {
-        a.sendError(w, "ID пользователя не указан", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInvalidInput)
         return
     }
 
     userID, err := uuid.Parse(userIDStr)
     if err != nil {
-        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
@@ -183,12 +198,12 @@ func (a *App) repeatCode(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) refreshSession(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
-        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
     if r.Header.Get("Content-Type") != "application/json" {
-        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        a.sendError(w, apperrors.ErrUnsupportedType)
         return
     }
 
@@ -200,14 +215,14 @@ func (a *App) refreshSession(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields() 
 
 	if err := decoder.Decode(&request); err != nil {
-		a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+		a.sendError(w, apperrors.ErrInternal)
 		return
 	}
 
 	// Если токен истек или его нет
     response, err := a.accountService.RefreshSession(r.Context(), request.RefreshToken)
     if err != nil {
-        a.sendError(w, "Сессия недействительна: "+err.Error(), http.StatusBadRequest)
+        a.sendError(w, err)
         return
     }
 
@@ -218,12 +233,12 @@ func (a *App) refreshSession(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
-        a.sendError(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
-	if r.Header.Get("Content-Type") != "application/json" {
-        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, apperrors.ErrUnsupportedType)
         return
     }
 
@@ -232,13 +247,13 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
     }
 
     if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-        a.sendError(w, "Некорректное тело запроса", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
     err := a.accountService.Logout(r.Context(), request.RefreshToken)
     if err != nil {
-        a.sendError(w, "Ошибка при удалении сессии", http.StatusInternalServerError)
+        a.sendError(w, err)
         return
     }
 
@@ -247,25 +262,25 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) getRoom(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodGet {
-        a.sendError(w, "Данный метод поддерживает только Get запросы", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
 	roomIDStr := r.PathValue("roomId")
     if roomIDStr == "" {
-        a.sendError(w, "ID комнаты не указан", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInvalidInput)
         return
     }
 
     roomId, err := uuid.Parse(roomIDStr)
     if err != nil {
-        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
     room, err := a.accountService.GetRoom(r.Context(), roomId)
     if err != nil {
-        a.sendError(w, err.Error(), http.StatusInternalServerError)
+        a.sendError(w, err)
         return
     }
 
@@ -275,39 +290,36 @@ func (a *App) getRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) updateRoom(w http.ResponseWriter, r *http.Request) {
-    // 1. Проверка метода
     if r.Method != http.MethodPost {
-        a.sendError(w, "Данный метод поддерживает только POST запросы", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
     if r.Header.Get("Content-Type") != "application/json" {
-        a.sendError(w, "Запрос должен содержать json данные", http.StatusUnsupportedMediaType)
+        a.sendError(w, apperrors.ErrUnsupportedType)
         return
     }
 
-    // Извлекаем данные из заголовков
     roomID := r.Header.Get("X-Room-ID")
 
     roomId, err := uuid.Parse(roomID)
     if err != nil {
-        a.sendError(w, "Некорректный формат UUID", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
-    // Декодируем тело запроса
-    var request requests.UpdateRoomRequest // Твоя структура с json тегами
+    var request requests.UpdateRoomRequest 
     decoder := json.NewDecoder(r.Body)
     decoder.DisallowUnknownFields()
 
     if err := decoder.Decode(&request); err != nil {
-        a.sendError(w, "Тело запроса содержит недопустимые поля или неверный формат", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
     response, err := a.accountService.UpdateRoom(r.Context(), roomId, &request)
     if err != nil {
-        a.sendError(w, "Не удалось обновить данные: " + err.Error(), http.StatusInternalServerError)
+        a.sendError(w, err)
         return
     }
 
@@ -317,52 +329,55 @@ func (a *App) updateRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) getRoomsInfo(w http.ResponseWriter, r *http.Request) {
-    // 1. Только POST
     if r.Method != http.MethodPost {
-        a.sendError(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
-    // 2. Декодируем список ID
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, apperrors.ErrUnsupportedType)
+        return
+    }
+
     var req requests.GetRoomsBatch
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        a.sendError(w, "Некорректный JSON", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInvalidInput)
         return
     }
 
-    // 3. Вызов сервиса
     roomsMap, err := a.accountService.GetRoomsInfoBatch(r.Context(), req.UserIDs)
     if err != nil {
-        a.sendError(w, "Ошибка при получении данных комнат", http.StatusInternalServerError)
+        a.sendError(w, err)
         return
     }
 
-    // 4. Отправка мапы map[uuid]RoomInfo
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusOK)
     json.NewEncoder(w).Encode(roomsMap)
 }
 
 func (a *App) getRoomInfo(w http.ResponseWriter, r *http.Request) {
-    // 1. Только POST
     if r.Method != http.MethodPost {
-        a.sendError(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
         return
     }
 
-    // 2. Декодируем список ID
+    if r.Header.Get("Content-Type") != "application/json" {
+        a.sendError(w, apperrors.ErrUnsupportedType)
+        return
+    }
+
     var req struct {
         RoomId uuid.UUID `json:"room_id"`
     }
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        a.sendError(w, "Некорректный JSON", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInternal)
         return
     }
 
-    // 3. Вызов сервиса
     room, err := a.accountService.GetRoomInfo(r.Context(), req.RoomId)
     if err != nil {
-        a.sendError(w, "Ошибка при получении данных комнаты" + err.Error(), http.StatusInternalServerError)
+        a.sendError(w, err)
         return
     }
 

@@ -1,13 +1,13 @@
 package services
 
 import (
+	apperrors "account-microservice/app-errors"
 	"account-microservice/contracts/account/requests"
 	"account-microservice/contracts/account/responses"
 	"account-microservice/models"
 	"account-microservice/repositories"
 	"account-microservice/utils"
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -26,7 +26,7 @@ type AccountService struct {
 func (as *AccountService) GetRoomInfo(context context.Context, id uuid.UUID) (*responses.RoomInfo, error) {
 	room, err := as.accountRepo.GetRoomInfo(context, id)
 	if err != nil {
-		return nil, errors.Join(errors.New("Ошибка в бд "), err)
+		return nil, err
 	}
 
 	room.AvatarUrl = as.s3Manager.FormatFullURL(room.AvatarUrl)
@@ -40,7 +40,7 @@ func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, 
 	if request.AvatarFileName != "" {
 		presignedUrlAvatar, staticUrlAvatar, err := as.s3Manager.GenerateUploadContext(context, roomId.String(), request.AvatarFileName)
 		if err != nil {
-			return nil, errors.New("Ошибка генерации ссылок для аватарки")
+			return nil, apperrors.ErrGeneratingLinksForMedia
 		}
 
 		request.AvatarFileName = staticUrlAvatar
@@ -49,7 +49,7 @@ func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, 
 	if request.BackgroundFileName != "" {
 		presignedUrlBack, staticUrlBack, err := as.s3Manager.GenerateUploadContext(context, roomId.String(), request.BackgroundFileName)
 		if err != nil {
-			return nil, errors.New("Ошибка генерации ссылок для фона")
+			return nil, apperrors.ErrGeneratingLinksForMedia
 		}
 
 		request.BackgroundFileName = staticUrlBack
@@ -102,17 +102,17 @@ func (as *AccountService) GetRoom(context context.Context, roomId uuid.UUID) (*r
 
 func (as *AccountService) VerifyCode(context context.Context, userVerify *requests.VerifyUser) (*responses.AuthResponse, error) {
 	if userVerify.Code == "" || len(userVerify.Code) != 6 {
-		return nil, errors.New("Неверный формат кода")
+		return nil, apperrors.ErrInvalidInput
 	}
 
 	isConfigured, err := as.accountRepo.GetStatusConfigured(context, userVerify.UserId)
 	if err != nil {
-		return nil, errors.New("status configuration search error")
+		return nil, err
 	}
 
 	roomId, err := as.accountRepo.GetRoomIdByUserId(context, userVerify.UserId)
 	if err != nil {
-		return nil, errors.New("roomId search error")
+		return nil, err
 	}
 
 	gotCode, err := as.accountRepo.GetOTPCode(context, userVerify.UserId)
@@ -121,7 +121,7 @@ func (as *AccountService) VerifyCode(context context.Context, userVerify *reques
 	}
 
 	if gotCode != userVerify.Code {
-		return nil, errors.New("codes don't match")
+		return nil, apperrors.ErrInvalidCode
 	}
 
 	accessToken, _ := as.jwtManager.Generate(userVerify.UserId.String(), roomId.String())
@@ -130,7 +130,7 @@ func (as *AccountService) VerifyCode(context context.Context, userVerify *reques
 
 	err = as.accountRepo.VerifyAndCreateSession(context, userVerify.UserId, refreshToken, userVerify.DeviceInfo, expiresAt)
 	if err != nil {
-		return nil, errors.New("couldn't update status")
+		return nil, err
 	}
 
 	response := &responses.AuthResponse{AccessToken: accessToken, RefreshToken: refreshToken, IsConfigured: isConfigured}
@@ -143,17 +143,17 @@ func (as *AccountService) NewAccount(ctx context.Context, newUser *requests.Crea
 	newRoomId := uuid.New()
 
 	if newUser.Email == "" {
-		return nil, errors.New("Поле Email оказалось пустым")
+		return nil, apperrors.ErrInvalidInput
 	}
 	if newUser.Password == "" {
-		return nil, errors.New("Поле Password оказалось пустым")
+		return nil, apperrors.ErrInvalidInput
 	}
 
 	// Добавить проверку требования пароля
 
 	hashPassword, err := as.passHasher.HashPassword(newUser.Password)
 	if err != nil {
-		return nil, errors.New("Ошибка во время создания хеша пароля")
+		return nil, apperrors.ErrInternal
 	}
 
 	roomUniqueId := fmt.Sprintf("USER-%s", newRoomId)
@@ -184,12 +184,12 @@ func (as *AccountService) GenerateAndSendCode(userId uuid.UUID, email string) {
 func (as *AccountService) LoginUser(ctx context.Context, loginReq *requests.LoginUser) (*models.BaseUser, error) {
 	user, err := as.accountRepo.GetUserByEmail(ctx, loginReq.Email)
 	if err != nil {
-		return nil, errors.New("incorrect email address or server error")
+		return nil, err
 	}
 
 	isEqual := as.passHasher.ComparePassword(loginReq.Password, user.PasswordHash)
 	if !isEqual {
-		return nil, errors.New("password incorrect")
+		return nil, apperrors.ErrInvalidPassword
 	}
 
 	as.GenerateAndSendCode(user.ID, user.Email)
@@ -205,7 +205,7 @@ func (as *AccountService) RefreshSession(ctx context.Context, oldRefreshToken st
 
 	if session.ExpiresAt.Before(time.Now()) {
 		_ = as.accountRepo.DeleteRefreshToken(ctx, oldRefreshToken)
-		return nil, fmt.Errorf("service life has expired")
+		return nil, apperrors.ErrSessionExpired
 	}
 
 	newAccessToken, _ := as.jwtManager.Generate(session.UserId.String(), session.RoomId.String())
@@ -214,7 +214,7 @@ func (as *AccountService) RefreshSession(ctx context.Context, oldRefreshToken st
 
 	err = as.accountRepo.UpdateRefreshToken(ctx, oldRefreshToken, newRefreshToken, newExpiresAt)
 	if err != nil {
-		return nil, errors.New("token update error")
+		return nil, err
 	}
 
 	return &responses.RefreshTokens{
@@ -226,15 +226,15 @@ func (as *AccountService) RefreshSession(ctx context.Context, oldRefreshToken st
 func (as *AccountService) doGenerateAndSend(ctx context.Context, userId uuid.UUID, email string) error {
 	code, err := utils.GenerateCode()
 	if err != nil {
-		return fmt.Errorf("генерация кода: %w", err)
+		return apperrors.ErrInternal
 	}
 
 	if err := as.accountRepo.AddCodeWithTimeout(ctx, userId, code); err != nil {
-		return fmt.Errorf("запись в Redis: %w", err)
+		return err
 	}
 
 	if err := as.emailProvider.SendVerificationCode(email, code); err != nil {
-		return fmt.Errorf("отправка почты: %w", err)
+		return apperrors.ErrEmailProvider
 	}
 
 	return nil

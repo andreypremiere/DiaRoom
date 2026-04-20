@@ -26,7 +26,7 @@ func InitPool(ctx context.Context) (*pgxpool.Pool, error) {
 	}
 
 	// Настройки пула для Highload (как мы обсуждали для 10k юзеров)
-	config.MaxConns = 25                      // Максимальное кол-во соединений
+	config.MaxConns = 100                     // Максимальное кол-во соединений
 	config.MinConns = 5                       // Минимальное кол-во активных соединений
 	config.MaxConnLifetime = time.Hour        // Время жизни соединения
 	config.MaxConnIdleTime = 30 * time.Minute // Время простоя
