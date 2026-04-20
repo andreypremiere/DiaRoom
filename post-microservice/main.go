@@ -1,54 +1,80 @@
 package main
 
 import (
-	// "context"
-	// "database/sql"
 	"context"
 	"encoding/json"
-	// "errors"
+	"errors"
 	"fmt"
-
-	// "fmt"
+	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	apperrors "post-microservice/app-errors"
+	"post-microservice/clients"
 	"post-microservice/database"
 	"post-microservice/models"
 	"post-microservice/repositories"
 	"post-microservice/services"
+	"syscall"
+	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
-	"github.com/go-chi/chi"
 )
 
-// App содержит зависимости приложения, такие как сервисы бизнес-логики
 type App struct {
 	service services.PostServiceInter
 }
 
+func (a *App) sendError(w http.ResponseWriter, err error) {
+    var appErr apperrors.AppError
+    
+    status := http.StatusInternalServerError
+    
+    if errors.As(err, &appErr) {
+        switch appErr.Code {
+        case "NOT_FOUND":
+            status = http.StatusNotFound
+        case "ALREADY_EXISTS":
+            status = http.StatusConflict
+        case "METHOD_NOT_ALLOWED":
+            status = http.StatusMethodNotAllowed 
+        case "UNSUPPORTED_TYPE":
+            status = http.StatusUnsupportedMediaType 
+        case "INVALID_INPUT":
+            status = http.StatusBadRequest
+        default:
+            status = http.StatusBadRequest
+        }
+    } else {
+        appErr = apperrors.ErrInternal
+    }
 
-func (h *App) CreatePost(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    json.NewEncoder(w).Encode(map[string]string{
+        "error_code": appErr.Code,
+        "message":    appErr.Message,
+    })
+}
+
+func (a *App) CreatePost(w http.ResponseWriter, r *http.Request) {
     var post models.CreatePostRequest
     if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
-        http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInvalidInput)
         return
     }
 
-	roomIDStr := r.Header.Get("X-Room-ID")
-
-	roomID, err := uuid.Parse(roomIDStr)
+    roomIDStr := r.Header.Get("X-Room-ID")
+    roomID, err := uuid.Parse(roomIDStr)
     if err != nil {
-        http.Error(w, "Invalid Room ID format", http.StatusBadRequest)
+        a.sendError(w, apperrors.ErrInvalidInput)
         return
     }
 
-	post.Post.RoomID = roomID  // Задаем roomId из заголовка
-
-	fmt.Println("roomdId при создании поста: ", roomID)
-	spew.Dump("CreatePostRequest при создании поста", post)
-
-    result, err := h.service.CreatePost(r.Context(), post)
+    post.Post.RoomID = roomID
+    result, err := a.service.CreatePost(r.Context(), post)
     if err != nil {
-		http.Error(w, `{"error": "Ошибка при создании"}`, http.StatusBadRequest)
+        a.sendError(w, err) 
         return
     }
 
@@ -56,105 +82,162 @@ func (h *App) CreatePost(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(result)
 }
 
-func (h *App) GetPresignedUrls(w http.ResponseWriter, r *http.Request) {
-	// 1. Получаем и валидируем RoomID из заголовка
-	roomIDStr := r.Header.Get("X-Room-ID")
-	if roomIDStr == "" {
-		http.Error(w, `{"error": "Missing X-Room-ID header"}`, http.StatusBadRequest)
-		return
-	}
+func (a *App) GetPresignedUrls(w http.ResponseWriter, r *http.Request) {
+    roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
 
-	roomID, err := uuid.Parse(roomIDStr)
-	if err != nil {
-		http.Error(w, `{"error": "Invalid Room ID format"}`, http.StatusBadRequest)
-		return
-	}
+    roomID, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
 
-	// 2. Декодируем тело запроса
-	var req models.GenerateUrlsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid JSON body"}`, http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
+    var req models.GenerateUrlsRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+    defer r.Body.Close()
 
-	// 3. Вызываем сервисный слой
-	result, err := h.service.GenerateMediaUrls(r.Context(), roomID, req)
-	if err != nil {
-		// Логируем реальную ошибку на сервере
-		fmt.Printf("Ошибка в GenerateMediaUrls: %v\n", err)
-		http.Error(w, `{"error": "Failed to generate presigned URLs"}`, http.StatusInternalServerError)
-		return
-	}
+    result, err := a.service.GenerateMediaUrls(r.Context(), roomID, req)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
 
-	// 4. Отправляем успешный ответ клиенту
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(result)
 }
 
-func (h *App) SaveCanvasHandler(w http.ResponseWriter, r *http.Request) {
-	// Достаем ID поста из URL (например, используем chi или gorilla/mux)
-	postIDStr := chi.URLParam(r, "postId")
-	postID, err := uuid.Parse(postIDStr)
-	if err != nil {
-		http.Error(w, "Invalid post ID", http.StatusBadRequest)
-		return
-	}
+func (a *App) SaveCanvasHandler(w http.ResponseWriter, r *http.Request) {
+    postIDStr := r.PathValue("postId")
+    if postIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
 
-	var req models.SaveCanvasRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
+    postID, err := uuid.Parse(postIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
 
-	// Вызываем сервис
-	err = h.service.CreateAndAttachCanvas(r.Context(), postID, req.Payload)
-	if err != nil {
-		// В реальном проекте здесь стоит разделять ошибки (404, 500 и т.д.)
-		http.Error(w, "Failed to save canvas", http.StatusInternalServerError)
-		return
-	}
+    var req models.SaveCanvasRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status": "success"}`))
+    err = a.service.CreateAndAttachCanvas(r.Context(), postID, req.Payload)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte(`{"status": "success"}`))
 }
 
+func (a *App) GetAllPosts(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
+        return
+    }
+
+    posts, err := a.service.GetAllPosts(r.Context())
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(posts)
+}
+
+func (a *App) GetPost(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
+        return
+    }
+
+    postIDStr := r.PathValue("postId")
+    postID, err := uuid.Parse(postIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    post, err := a.service.GetPostForShowing(r.Context(), postID)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(post)
+}
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+    defer stop()
 
-	fmt.Println("Инициализация клиента")
-	s3Client, err := database.NewS3Client()
-	if err != nil {
-		fmt.Println("Ошибка создания клиента s3")
-	}
+	// S3 Client
+    s3Client, err := database.NewS3Client()
+    if err != nil {
+        log.Fatalf("Критическая ошибка: не удалось создать клиент S3: %v", err)
+    }
 
-	fmt.Println("Клиент s3 создан", s3Client)
+    // Database Pool
+    pool, err := database.InitPool(ctx)
+    if err != nil {
+        log.Fatalf("Критическая ошибка: не удалось инициализировать БД: %v", err)
+    }
+    defer pool.Close() 
 
-	pool, err := database.InitPool(ctx)
-	if err != nil {
-		fmt.Println("Ошибка инициализации базы данных")
-	}
-	defer pool.Close() // Не забудь закрыть при выходе
-	
+    // Redis Client
+    redisClient := database.InitRedisQueue()
+    defer redisClient.Close() 
 
-	// Инициализация слоев приложения (Repository -> Service -> App)
-	repository := repositories.NewPostRepository(pool)
-	service := services.NewPostService(repository, s3Client, "media-for-publication")
+	accountClient := clients.NewAccountClient("http://account-microservice:81")
 
+	repository := repositories.NewPostRepository(pool, redisClient)
+	service := services.NewPostService(repository, s3Client, "media-for-publication", accountClient)
 
 	app := App{service: service}
 	
-	r := chi.NewRouter()
+	mux := http.NewServeMux()
 
-    // Обычные маршруты
-    r.Post("/createPost", app.CreatePost)
-    r.Post("/getPresignedUrls", app.GetPresignedUrls)
+	mux.HandleFunc("POST /createPost", app.CreatePost)
+	mux.HandleFunc("POST /getPresignedUrls", app.GetPresignedUrls)
+	mux.HandleFunc("POST /{postId}/canvas", app.SaveCanvasHandler)
+	mux.HandleFunc("GET /allPosts", app.GetAllPosts)
+	mux.HandleFunc("GET /getPost/{postId}", app.GetPost)
 
-    // Маршрут с параметром {postId}
-    // Путь будет: /post/{postId}/canvas
-    r.Post("/{postId}/canvas", app.SaveCanvasHandler)
+	server := &http.Server{
+        Addr:    ":81",
+        Handler: mux,
+    }
 
-    http.ListenAndServe(":81", r) // Передаем 'r' вместо 'nil'
+	go func() {
+        fmt.Println("Сервер постов запущен на порту :81")
+        if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            log.Fatalf("Ошибка сервера: %v", err)
+        }
+    }()
+
+    <-ctx.Done()
+    fmt.Println("Завершение работы...")
+    
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    if err := server.Shutdown(shutdownCtx); err != nil {
+        fmt.Printf("Ошибка при остановке сервера: %v\n", err)
+    }
 }

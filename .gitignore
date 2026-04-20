@@ -1,8 +1,12 @@
 postgresql-rooms/
 postgresql-users/
 postgresql-posts/
+postgresql-accounts/
 
 go.sum
 .idea/
 .pytest_cache/
 .env
+__pycache__/
+
+content-checking-microservice/models/

@@ -10,14 +10,13 @@ import (
 )
 
 func InitPool(ctx context.Context) (*pgxpool.Pool, error) {
-	// Собираем DSN из переменных окружения Docker
-	// Пример: postgres://user:password@localhost:5432/dbname
+
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		"postgres",
-		os.Getenv("DB_PASSWORD"),
-		"postgresql-posts",
-		"5432",
-		"db_posts",
+		os.Getenv("POST_DB_USER"),
+		os.Getenv("POST_DB_PASSWORD"),
+		os.Getenv("POST_DB_HOST"),
+		os.Getenv("POST_DB_PORT"),
+		os.Getenv("POST_DB_NAMEBASE"),
 	)
 
 	// Создаем конфиг пула
@@ -26,8 +25,7 @@ func InitPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("unable to parse DSN: %w", err)
 	}
 
-	// Настройки пула для Highload (как мы обсуждали для 10k юзеров)
-	config.MaxConns = 25                      // Максимальное кол-во соединений
+	config.MaxConns = 100                     // Максимальное кол-во соединений
 	config.MinConns = 5                       // Минимальное кол-во активных соединений
 	config.MaxConnLifetime = time.Hour        // Время жизни соединения
 	config.MaxConnIdleTime = 30 * time.Minute // Время простоя
@@ -38,10 +36,8 @@ func InitPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("unable to create connection pool: %w", err)
 	}
 
-	// Важно: проверяем реальное подключение к базе
 	if err := pool.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("unable to ping database: %w", err)
 	}
-
 	return pool, nil
 }

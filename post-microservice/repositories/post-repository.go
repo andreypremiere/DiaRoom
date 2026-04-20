@@ -2,10 +2,17 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	apperrors "post-microservice/app-errors"
+	"post-microservice/contracts/responses"
 	"post-microservice/models"
+
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type PostRepositoryInter interface {
@@ -14,11 +21,134 @@ type PostRepositoryInter interface {
 	UpdatePostPreviewURL(ctx context.Context, postID uuid.UUID, previewURL string) error
 	AddHashtagsToPost(ctx context.Context, postID uuid.UUID, hashtags []string) error
 	InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error
+    PushPostToQueue(ctx context.Context, postID uuid.UUID) error
+    GetAllPosts(ctx context.Context) ([]responses.PostInfo, error)
+    GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error)
 }
 
 type PostRepository struct {
 	db *pgxpool.Pool	
+    redis *redis.Client
 
+}
+
+func (r *PostRepository) parseError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperrors.ErrNotFound
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505": 
+			return apperrors.ErrAlreadyExists
+		case "23503": 
+			return apperrors.ErrNotFound
+		case "22P02": 
+			return apperrors.ErrInvalidInput
+		}
+	}
+
+	if errors.Is(err, redis.Nil) {
+		return apperrors.ErrNotFound
+	}
+
+	return apperrors.ErrInternal
+}
+
+func (r *PostRepository) GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error) {
+	query := `
+		SELECT 
+			p.room_id, 
+			c.payload, 
+			cat.slug, 
+			p.views_count, 
+			p.likes_count,
+			COALESCE(
+				(SELECT array_agg(h.name) 
+				 FROM posts_hashtags ph 
+				 JOIN hashtags h ON ph.hashtag_id = h.id 
+				 WHERE ph.post_id = p.id), 
+				'{}'
+			) as hashtags
+		FROM posts p
+		INNER JOIN canvases c ON p.canvas_id = c.id
+		INNER JOIN categories cat ON p.category_id = cat.id
+		WHERE p.id = $1 AND p.is_deleted = FALSE
+	`
+
+	var post responses.ShowingPost
+	
+	err := r.db.QueryRow(ctx, query, postID).Scan(
+		&post.RoomId,
+		&post.Canvas,
+		&post.Category,
+		&post.ViewsCount,
+		&post.LikesCount,
+		&post.Hashtags,
+	)
+
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+
+	return &post, nil
+}
+
+func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo, error) {
+	query := `
+		SELECT 
+			p.id, 
+			p.room_id, 
+			p.preview_url, 
+			c.slug as category_slug, 
+			p.canvas_id, 
+			p.title, 
+			p.views_count, 
+			p.likes_count
+		FROM posts p
+		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.status = 'published' 
+		  AND p.is_deleted = FALSE
+          AND p.canvas_id IS NOT NULL
+		ORDER BY p.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	var posts []responses.PostInfo
+
+	for rows.Next() {
+		var p responses.PostInfo
+		err := rows.Scan(
+			&p.Id,
+			&p.RoomId,
+			&p.PreviewUrl,
+			&p.Category,
+			&p.CanvasId,
+			&p.Title,
+			&p.ViewsCount,
+			&p.LikesCount,
+		)
+		if err != nil {
+			return nil, r.parseError(err)
+		}
+		posts = append(posts, p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, r.parseError(err)
+	}
+
+	return posts, nil
 }
 
 func (r *PostRepository) UpdatePostPreviewURL(ctx context.Context, postID uuid.UUID, previewURL string) error {
@@ -28,7 +158,15 @@ func (r *PostRepository) UpdatePostPreviewURL(ctx context.Context, postID uuid.U
             updated_at = NOW()
         WHERE id = $2
     `, previewURL, postID)
-	return err
+	return r.parseError(err)
+}
+
+func (r *PostRepository) PushPostToQueue(ctx context.Context, postID uuid.UUID) error {
+    err := r.redis.LPush(ctx, "new_posts:post_id", postID.String()).Err()
+    if err != nil {
+        return r.parseError(err)
+    }
+    return nil
 }
 
 func (r *PostRepository) GetCategoryIdBySlug(ctx context.Context, slug string) (int, error) {
@@ -36,11 +174,9 @@ func (r *PostRepository) GetCategoryIdBySlug(ctx context.Context, slug string) (
     
     query := `SELECT id FROM categories WHERE slug = $1 LIMIT 1`
     
-    // Используем QueryRowContext, так как ожидаем ровно одно значение
     err := r.db.QueryRow(ctx, query, slug).Scan(&id)
     if err != nil {
-        // У pgx свои ошибки, но логика та же
-        return 0, fmt.Errorf("failed to get category: %w", err)
+        return 0, r.parseError(err)
     }
 
     return id, nil
@@ -55,7 +191,9 @@ func (r *PostRepository) CreatePost(ctx context.Context, data models.CreatePostI
         RETURNING id
     `, data.RoomID, data.CategoryID, data.Title, data.Status, data.AiStatus).Scan(&postID)
 
-	fmt.Println("Ошибка при создании поста: ", err)
+	if err != nil {
+		return postID, r.parseError(err)
+	}
 	
     return postID, err
 }
@@ -63,11 +201,10 @@ func (r *PostRepository) CreatePost(ctx context.Context, data models.CreatePostI
 func (r *PostRepository) AddHashtagsToPost(ctx context.Context, postID uuid.UUID, hashtags []string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return err
+		return r.parseError(err)
 	}
 	defer tx.Rollback(ctx)
 
-	// 1. Добавляем/обновляем хэштеги и получаем их ID
 	rows, err := tx.Query(ctx, `
     INSERT INTO hashtags (name)
     SELECT unnest($1::text[])
@@ -77,28 +214,25 @@ func (r *PostRepository) AddHashtagsToPost(ctx context.Context, postID uuid.UUID
     RETURNING id
 `, hashtags)
 	if err != nil {
-		return fmt.Errorf("failed to upsert hashtags: %w", err)
+		return r.parseError(err)
 	}
 
 	var hashtagIDs []int
-	// Очень важно закрыть rows, используй defer или закрой вручную после цикла
 	defer rows.Close() 
 
 	for rows.Next() {
 		var id int
 		if err := rows.Scan(&id); err != nil {
-			return fmt.Errorf("failed to scan hashtag id: %w", err)
+			return r.parseError(err)
 		}
 		hashtagIDs = append(hashtagIDs, id)
 	}
 
-	// Проверка на ошибки после итерации
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("rows iteration error: %w", err)
+		return r.parseError(err)
 	}
-	rows.Close() // Закрываем до выполнения следующего шага
+	rows.Close() 
 
-	// 2. Привязка (остается без изменений)
 	if len(hashtagIDs) > 0 {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO posts_hashtags (post_id, hashtag_id)
@@ -106,23 +240,27 @@ func (r *PostRepository) AddHashtagsToPost(ctx context.Context, postID uuid.UUID
 			ON CONFLICT DO NOTHING
 		`, postID, hashtagIDs)
 		if err != nil {
-			return fmt.Errorf("failed to link hashtags to post: %w", err)
+			return r.parseError(err)
 		}
 	}
 
-	return tx.Commit(ctx)
+	err = tx.Commit(ctx)
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	return err
 }
 
 func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error {
-    tx, err := r.db.Begin(ctx) // Убедитесь, что r.db это *pgxpool.Pool
+    tx, err := r.db.Begin(ctx) 
     if err != nil {
-        return fmt.Errorf("failed to begin tx: %w", err)
+        return r.parseError(err)
     }
     defer tx.Rollback(ctx)
 
     var canvasID uuid.UUID
 
-    // 1. Создаем Canvas. Используем string(payloadJSON) для надежности с типом JSONB
     insertCanvasQuery := `
         INSERT INTO canvases (payload) 
         VALUES ($1) 
@@ -130,10 +268,9 @@ func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID u
     `
     err = tx.QueryRow(ctx, insertCanvasQuery, string(payloadJSON)).Scan(&canvasID)
     if err != nil {
-        return fmt.Errorf("failed to insert canvas: %w", err)
+        return r.parseError(err)
     }
 
-    // 2. Обновляем Post
     updatePostQuery := `
         UPDATE posts 
         SET canvas_id = $1, updated_at = CURRENT_TIMESTAMP 
@@ -141,19 +278,21 @@ func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID u
     `
     tag, err := tx.Exec(ctx, updatePostQuery, canvasID, postID)
     if err != nil {
-        return fmt.Errorf("failed to update post: %w", err)
+        return r.parseError(err)
     }
 
-    // Проверка для pgx v5
     if tag.RowsAffected() == 0 {
         return fmt.Errorf("post not found")
     }
 
-    return tx.Commit(ctx)
+    err = tx.Commit(ctx)
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	return err
 }
 
-func NewPostRepository(db *pgxpool.Pool) *PostRepository {
-	// Принимать базы данных какие-нибудь
-
-	return &PostRepository{db: db}
+func NewPostRepository(db *pgxpool.Pool, redis *redis.Client) *PostRepository {
+	return &PostRepository{db: db, redis: redis}
 }

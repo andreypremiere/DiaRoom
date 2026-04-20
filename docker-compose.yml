@@ -42,53 +42,29 @@ services:
     networks:
       - backend-application
 
-  user-microservice:
-    build: ./user-microservice
-    container_name: user-microservice
+  account-microservice:
+    build: ./account-microservice
+    container_name: account-microservice
     env_file:
       - .env
     ports:
-      - "8081:81"
+      - "8084:81"
     volumes:
-      - ./user-microservice:/app
+      - ./account-microservice:/app
     networks:
       - backend-application
 
-  room-microservice:
-    build: ./room-microservice
-    container_name: room-microservice
-    ports:
-      - "8082:81"
-    volumes:
-      - ./room-microservice:/app
-    networks:
-      - backend-application
-
-  postgresql-users:
+  postgresql-accounts:
     image: postgres:18.2-alpine3.23
-    container_name: postgresql-users
+    container_name: postgresql-accounts
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "1111"
-      POSTGRES_DB: db_users
+      POSTGRES_DB: db_accounts
     ports:
-      - "5434:5432"
+      - "5435:5432"
     volumes:
-      - ./postgresql-users:/var/lib/postgresql
-    networks:
-      - backend-application
-
-  postgresql-rooms:
-    image: postgres:18.2-alpine3.23
-    container_name: postgresql-rooms
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "1111"
-      POSTGRES_DB: db_rooms
-    ports:
-      - "5433:5432"
-    volumes:
-      - ./postgresql-rooms:/var/lib/postgresql
+      - ./postgresql-accounts:/var/lib/postgresql
     networks:
       - backend-application
 
@@ -100,19 +76,42 @@ services:
       POSTGRES_PASSWORD: "1111"
       POSTGRES_DB: db_posts
     ports:
-      - "5435:5432"
+      - "5436:5432"
     volumes:
       - ./postgresql-posts:/var/lib/postgresql
     networks:
       - backend-application
 
-  redis-cache:
+  checking-content-microservice:
+    build: ./content-checking-microservice
+    # container_name: checking-content-microservice
+    # ports:
+    #   - "8084:8000"
+    volumes:
+    - ./content-checking-microservice:/app
+    networks:
+      - backend-application
+    deploy:           
+      resources:      
+        limits:       
+          cpus: '3'  # Ограничение: не более 300% (3 ядер)
+          memory: 2G   # Ограничение: не более 2 ГБ оперативной памяти
+
+
+  redis-queue:
     image: redis:8.6.0-alpine3.23
-    container_name: redis-cache
+    container_name: redis-queue
+    ports:
+      - "6380:6379"
+    networks:
+    - backend-application
+    
+
+  redis-otp-code:
+    image: redis:8.6.0-alpine3.23
+    container_name: redis-otp-code
     ports:
       - "6379:6379"
     networks:
       - backend-application
-    # volumes:
-    #   - ./redis-data:/data # Чтобы задачи не пропали при перезагрузке контейнера
-    # command: ["redis-server", "--appendonly", "yes"] # Включаем сохранение данных на диск
+
