@@ -12,8 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/andreypremiere/jwtmanager"
@@ -388,8 +391,8 @@ func (a *App) getRoomInfo(w http.ResponseWriter, r *http.Request) {
 
 
 func main() {
-	// Создание фонового контекста для инициализации ресурсов
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+    defer stop()
 
 	// Настройка пула соединений PostgreSQL
 	user := os.Getenv("ACCOUNT_DB_USER")
@@ -400,19 +403,23 @@ func main() {
 
 	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", 
     user, password, host, port, db_name)
-	poolPg, err := pgxpool.New(ctx, connString)
-	if err != nil {
-		fmt.Println("Ошибка инициализации пула соединений")
-		return
-	} else {
-		fmt.Println("Пул соединений инициализирован")
-	}
 
-	// Настройка Redis
+	poolPg, err := pgxpool.New(ctx, connString)
+    if err != nil {
+        log.Fatalf("Критическая ошибка: не удалось инициализировать пул БД: %v", err)
+    }
+    defer poolPg.Close() 
+    fmt.Println("Пул соединений PostgreSQL инициализирован")
+
 	hostRedis := os.Getenv("REDIS_OTP_HOST")
 	portRedis := os.Getenv("REDIS_OTP_PORT")
 	addrRedis := fmt.Sprintf("%s:%s", hostRedis, portRedis)
 	rdb := redis.NewClient(&redis.Options{Addr: addrRedis})
+    defer rdb.Close() 
+
+    if err := rdb.Ping(ctx).Err(); err != nil {
+        log.Fatalf("Критическая ошибка: Redis недоступен: %v", err)
+    }
 
 	// Настройка email провайдера
 	emailConfig := utils.EmailConfig{
@@ -432,8 +439,11 @@ func main() {
 	var newPasswordHasher *utils.PasswordHasher = utils.NewPasswordHasher(10)
 
 	secretJwt := os.Getenv("JWT_SECRET")
+    if secretJwt == "" {
+        log.Fatal("Критическая ошибка: JWT_SECRET не задан")
+    }
 
-	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 2*time.Minute)
+	jwtmanager := jwtmanager.NewJWTManager(secretJwt, 15*time.Minute)
 
 	accountRepo := repositories.NewAccountRepository(poolPg, rdb)
 
@@ -446,7 +456,6 @@ func main() {
 
 	mux := http.NewServeMux()
 
-    // Для gateway
     mux.HandleFunc("POST /newAccount", app.newAccount)
     mux.HandleFunc("POST /verify/{userId}", app.verify) 
     mux.HandleFunc("POST /login", app.LoginUser)
@@ -460,12 +469,28 @@ func main() {
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)
     mux.HandleFunc("POST /getRoomInfoInternal", app.getRoomInfo)
 
-	fmt.Println("Сервер запущен на :81")
-	if err := http.ListenAndServe(":81", mux); err != nil {
-		fmt.Println(err.Error())
-	}
+	server := &http.Server{
+        Addr:    ":81",
+        Handler: mux,
+    }
 
-	defer func() {
-		poolPg.Close()
-	}()
+    // Запуск сервера в отдельной горутине
+    go func() {
+        fmt.Println("Сервер запущен на :81")
+        if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            log.Fatalf("Ошибка при работе сервера: %v", err)
+        }
+    }()
+
+    <-ctx.Done()
+    fmt.Println("\nПолучен сигнал завершения, останавливаем сервер...")
+
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    if err := server.Shutdown(shutdownCtx); err != nil {
+        fmt.Printf("Ошибка при плавной остановке: %v\n", err)
+    }
+
+    fmt.Println("Сервер успешно остановлен")
 }

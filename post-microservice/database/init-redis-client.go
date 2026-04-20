@@ -8,10 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func InitRedisQueue() *redis.Client {
-	// В Docker Compose хост будет "redis-queue", локально — "localhost"
-	
-
+func InitRedisQueue() *redis.Client {	
 	addr := fmt.Sprintf("%s:%s",
 		os.Getenv("REDIS_QUEUE_HOST"),
 		os.Getenv("REDIS_QUEUE_POST"),
