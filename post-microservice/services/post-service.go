@@ -10,11 +10,15 @@ import (
 
 	apperrors "post-microservice/app-errors"
 	"post-microservice/clients"
+	"post-microservice/contracts/requests"
 	"post-microservice/contracts/responses"
 	"post-microservice/models"
+	postModel "post-microservice/models/post"
 	"post-microservice/repositories"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 )
 
@@ -24,6 +28,7 @@ type PostServiceInter interface {
 	CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error
 	GetAllPosts(ctx context.Context) ([]responses.Post, error)
 	GetPostForShowing(ctx context.Context, postId uuid.UUID) (*responses.ShowingPost, error)
+	CreatingPostV2(ctx context.Context, roomId uuid.UUID, postRequest requests.PostDraftRequest) error
 }
 
 type PostService struct {
@@ -57,7 +62,9 @@ func (s *PostService) GetAllPosts(ctx context.Context) ([]responses.Post, error)
 	}
 
 	for i := range postsInfo {
-		postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
+		if postsInfo[i].PreviewUrl != "" {
+			postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
+		}
 	}
 
 	if len(postsInfo) == 0 {
@@ -154,6 +161,55 @@ func (s *PostService) CreatePost(ctx context.Context, req models.CreatePostReque
 		},
 	}, nil
 
+}
+
+func (s *PostService) CreatingPostV2(ctx context.Context, roomId uuid.UUID, postRequest requests.PostDraftRequest) error {
+	var finalBlocks []postModel.PostBlock
+
+	// 3. Итерируемся по сырым блокам и определяем их тип
+	for _, raw := range postRequest.Blocks {
+		// Сначала выцепляем только тип, чтобы понять, во что парсить дальше
+		var base postModel.BaseBlock
+		if err := json.Unmarshal(raw, &base); err != nil {
+			fmt.Println("Ошибка итерации по блоку")
+			continue 
+		}
+
+		// Выбираем структуру на основе blockType из Flutter
+		switch base.BlockType {
+		case "text":
+			var b postModel.TextBlockPost
+			if err := json.Unmarshal(raw, &b); err == nil {
+				finalBlocks = append(finalBlocks, b)
+				fmt.Println("Добавлен блок текстовый")
+			}
+		case "photos":
+			var b postModel.PhotoBlockPost
+			if err := json.Unmarshal(raw, &b); err == nil {
+				finalBlocks = append(finalBlocks, b)
+				fmt.Println("Добавлен блок фото")
+			}
+		case "videos":
+			var b postModel.VideoBlockPost
+			if err := json.Unmarshal(raw, &b); err == nil {
+				finalBlocks = append(finalBlocks, b)
+				fmt.Println("Добавлен блок видео")
+			}
+		default:
+			fmt.Printf("Unknown block type: %s\n", base.BlockType)
+		}
+	}
+
+	draft := postModel.PostDraft{
+		Title:        postRequest.Title,
+		CategorySlug: postRequest.CategorySlug,
+		Hashtags:     postRequest.Hashtags,
+		Blocks:       finalBlocks,
+	}
+
+	spew.Dump(draft)
+
+	return nil
 }
 
 func (s *PostService) GenerateMediaUrls(ctx context.Context, roomID uuid.UUID, req models.GenerateUrlsRequest) (*models.GenerateUrlsResponse, error) {

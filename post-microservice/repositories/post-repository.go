@@ -104,7 +104,7 @@ func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo,
 		SELECT 
 			p.id, 
 			p.room_id, 
-			p.preview_url, 
+			COALESCE(p.preview_url, '') as preview_url,
 			c.slug as category_slug, 
 			p.canvas_id, 
 			p.title, 
@@ -115,6 +115,7 @@ func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo,
 		WHERE p.status = 'published' 
 		  AND p.is_deleted = FALSE
           AND p.canvas_id IS NOT NULL
+		  AND p.preview_url IS NOT NULL
 		ORDER BY p.created_at DESC
 	`
 

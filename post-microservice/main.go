@@ -11,8 +11,10 @@ import (
 	"os/signal"
 	apperrors "post-microservice/app-errors"
 	"post-microservice/clients"
+	"post-microservice/contracts/requests"
 	"post-microservice/database"
 	"post-microservice/models"
+    // postModel "post-microservice/models/post"
 	"post-microservice/repositories"
 	"post-microservice/services"
 	"syscall"
@@ -184,6 +186,32 @@ func (a *App) GetPost(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(post)
 }
 
+func (a *App) CreatePostV2(w http.ResponseWriter, r *http.Request) {
+    roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    roomID, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+	var req requests.PostDraftRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+    err = a.service.CreatingPostV2(r.Context(), roomID, req)
+    
+    w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(nil) 
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
@@ -219,6 +247,7 @@ func main() {
 	mux.HandleFunc("POST /{postId}/canvas", app.SaveCanvasHandler)
 	mux.HandleFunc("GET /allPosts", app.GetAllPosts)
 	mux.HandleFunc("GET /getPost/{postId}", app.GetPost)
+    mux.HandleFunc("POST /createPostV2", app.CreatePostV2)
 
 	server := &http.Server{
         Addr:    ":81",
