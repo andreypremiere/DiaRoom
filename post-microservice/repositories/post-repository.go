@@ -16,7 +16,7 @@ import (
 )
 
 type PostRepositoryInter interface {
-	GetCategoryIdBySlug(ctx context.Context, slug string) (int, error)
+	// GetCategoryIdBySlug(ctx context.Context, slug string) (int, error)
 	CreatePost(ctx context.Context, data models.CreatePostInternal) (uuid.UUID, error)
 	UpdatePostPreviewURL(ctx context.Context, postID uuid.UUID, previewURL string) error
 	AddHashtagsToPost(ctx context.Context, postID uuid.UUID, hashtags []string) error
@@ -65,7 +65,7 @@ func (r *PostRepository) GetPostForShowing(ctx context.Context, postID uuid.UUID
 		SELECT 
 			p.room_id, 
 			c.payload, 
-			cat.slug, 
+			p.category_slug, 
 			p.views_count, 
 			p.likes_count,
 			COALESCE(
@@ -77,8 +77,7 @@ func (r *PostRepository) GetPostForShowing(ctx context.Context, postID uuid.UUID
 			) as hashtags
 		FROM posts p
 		INNER JOIN canvases c ON p.canvas_id = c.id
-		INNER JOIN categories cat ON p.category_id = cat.id
-		WHERE p.id = $1 AND p.is_deleted = FALSE
+		WHERE p.id = $1
 	`
 
 	var post responses.ShowingPost
@@ -105,15 +104,13 @@ func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo,
 			p.id, 
 			p.room_id, 
 			p.preview_url, 
-			c.slug as category_slug, 
+			p.category_slug, 
 			p.canvas_id, 
 			p.title, 
 			p.views_count, 
 			p.likes_count
 		FROM posts p
-		LEFT JOIN categories c ON p.category_id = c.id
 		WHERE p.status = 'published' 
-		  AND p.is_deleted = FALSE
           AND p.canvas_id IS NOT NULL
 		ORDER BY p.created_at DESC
 	`
@@ -169,27 +166,27 @@ func (r *PostRepository) PushPostToQueue(ctx context.Context, postID uuid.UUID) 
     return nil
 }
 
-func (r *PostRepository) GetCategoryIdBySlug(ctx context.Context, slug string) (int, error) {
-    var id int
+// func (r *PostRepository) GetCategoryIdBySlug(ctx context.Context, slug string) (int, error) {
+//     var id int
     
-    query := `SELECT id FROM categories WHERE slug = $1 LIMIT 1`
+//     query := `SELECT id FROM categories WHERE slug = $1 LIMIT 1`
     
-    err := r.db.QueryRow(ctx, query, slug).Scan(&id)
-    if err != nil {
-        return 0, r.parseError(err)
-    }
+//     err := r.db.QueryRow(ctx, query, slug).Scan(&id)
+//     if err != nil {
+//         return 0, r.parseError(err)
+//     }
 
-    return id, nil
-}
+//     return id, nil
+// }
 
 func (r *PostRepository) CreatePost(ctx context.Context, data models.CreatePostInternal) (uuid.UUID, error) {
     var postID uuid.UUID
     err := r.db.QueryRow(ctx, `
         INSERT INTO posts (
-            room_id, category_id, title, status, ai_check_status
+            room_id, category_slug, title, status, ai_check_status
         ) VALUES ($1, $2, $3, $4, $5)
         RETURNING id
-    `, data.RoomID, data.CategoryID, data.Title, data.Status, data.AiStatus).Scan(&postID)
+    `, data.RoomID, data.CategorySlug, data.Title, "processing", "notChecked").Scan(&postID)
 
 	if err != nil {
 		return postID, r.parseError(err)

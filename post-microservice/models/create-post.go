@@ -13,8 +13,6 @@ type CreatePostRequest struct {
 type PostData struct {
     RoomID       uuid.UUID `json:"roomId"` // Если передаешь из Flutter
     Title        string    `json:"title"`
-    PostStatus   string    `json:"postStatus"`
-    AiStatus     string    `json:"aiStatus"`
     CategorySlug string    `json:"categorySlug"`
     Hashtags     []string  `json:"hashtags"`
 }
@@ -38,8 +36,6 @@ type PreviewLinksResponse struct {
 
 type CreatePostInternal struct {
     RoomID     uuid.UUID
-    CategoryID int
+    CategorySlug string
     Title      string
-    Status     string
-    AiStatus   string
 }

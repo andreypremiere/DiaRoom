@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS rooms (
 
 -- Таблица категорий
 CREATE TABLE IF NOT EXISTS categories (
-    slug VARCHAR(50) PRIMARY KEY, -- Теперь это PK
-    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(100) PRIMARY KEY, -- Теперь это PK
+    name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email));
 CREATE INDEX IF NOT EXISTS idx_users_active ON users (is_activated) WHERE is_activated = TRUE;
 CREATE INDEX IF NOT EXISTS idx_rooms_unique_id_lower ON rooms (LOWER(room_unique_id));
-CREATE INDEX IF NOT EXISTS idx_room_categories_cat_id ON room_categories(category_id);
+CREATE INDEX IF NOT EXISTS idx_room_categories_cat_id ON room_categories(category_slug);
 
 --- НАПОЛНЕНИЕ ---
 INSERT INTO categories (slug, name)

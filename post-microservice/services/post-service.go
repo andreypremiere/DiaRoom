@@ -56,12 +56,12 @@ func (s *PostService) GetAllPosts(ctx context.Context) ([]responses.Post, error)
 		return nil, err
 	}
 
-	for i := range postsInfo {
-		postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
-	}
-
 	if len(postsInfo) == 0 {
 		return []responses.Post{}, nil
+	}
+
+	for i := range postsInfo {
+		postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
 	}
 
 	roomIDs := make([]uuid.UUID, 0)
@@ -105,17 +105,15 @@ func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUI
 }
 
 func (s *PostService) CreatePost(ctx context.Context, req models.CreatePostRequest) (*models.CreatePostResponse, error) {
-	categoryID, err := s.repo.GetCategoryIdBySlug(ctx, req.Post.CategorySlug)
-	if err != nil {
-        return nil, err
-	}
+	// categoryID, err := s.repo.GetCategoryIdBySlug(ctx, req.Post.CategorySlug)
+	// if err != nil {
+    //     return nil, err
+	// }
 
 	postID, err := s.repo.CreatePost(ctx, models.CreatePostInternal{
 		RoomID:     req.Post.RoomID,
-		CategoryID: categoryID,
+		CategorySlug: req.Post.CategorySlug,
 		Title:      req.Post.Title,
-		Status:     req.Post.PostStatus,
-		AiStatus:   req.Post.AiStatus,
 	})
 	if err != nil {
 		return nil, err
