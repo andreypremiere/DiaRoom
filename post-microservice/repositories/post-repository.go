@@ -24,6 +24,7 @@ type PostRepositoryInter interface {
     PushPostToQueue(ctx context.Context, postID uuid.UUID) error
     GetAllPosts(ctx context.Context) ([]responses.PostInfo, error)
     GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error)
+	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
 }
 
 type PostRepository struct {
@@ -249,6 +250,27 @@ func (r *PostRepository) AddHashtagsToPost(ctx context.Context, postID uuid.UUID
 	return err
 }
 
+func (r *PostRepository) UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error {
+	query := `
+        UPDATE posts 
+        SET 
+            status = 'checking', 
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $1;
+    `
+
+    result, err := r.db.Exec(ctx, query, postID)
+    if err != nil {
+        return r.parseError(err) 
+    }
+
+    if result.RowsAffected() == 0 {
+        return fmt.Errorf("post with id %s not found", postID)
+    }
+
+    return nil
+}
+
 func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error {
     tx, err := r.db.Begin(ctx) 
     if err != nil {
@@ -279,7 +301,7 @@ func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID u
     }
 
     if tag.RowsAffected() == 0 {
-        return fmt.Errorf("post not found")
+        return apperrors.ErrNotFound
     }
 
     err = tx.Commit(ctx)

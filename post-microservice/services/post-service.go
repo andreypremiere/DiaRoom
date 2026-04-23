@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
+	
 )
 
 type PostServiceInter interface {
@@ -24,6 +25,7 @@ type PostServiceInter interface {
 	CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error
 	GetAllPosts(ctx context.Context) ([]responses.Post, error)
 	GetPostForShowing(ctx context.Context, postId uuid.UUID) (*responses.ShowingPost, error)
+	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
 }
 
 type PostService struct {
@@ -89,10 +91,10 @@ func (s *PostService) GetAllPosts(ctx context.Context) ([]responses.Post, error)
 	return result, nil
 }
 
-func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error {
-	err := s.repo.InsertCanvasAndUpdatePost(ctx, postID, payload)
+func (s *PostService) UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error {
+	err := s.repo.UpdateStatusUploaded(ctx, postID)
 	if (err != nil) {
-		fmt.Println("Ошибка добавления холста в пост", err.Error())
+		fmt.Println("Ошибка обновления статуса для поста", err.Error())
 		return err
 	}
 
@@ -101,6 +103,21 @@ func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUI
 		fmt.Println("Ошибка добавления id поста в очередь", err.Error())
 		return err
 	}
+	return nil
+}
+
+func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error {
+	err := s.repo.InsertCanvasAndUpdatePost(ctx, postID, payload)
+	if (err != nil) {
+		fmt.Println("Ошибка добавления холста в пост", err.Error())
+		return err
+	}
+
+	// err = s.repo.PushPostToQueue(ctx, postID)
+	// if (err != nil) {
+	// 	fmt.Println("Ошибка добавления id поста в очередь", err.Error())
+	// 	return err
+	// }
 	return nil
 }
 

@@ -143,6 +143,28 @@ func (a *App) SaveCanvasHandler(w http.ResponseWriter, r *http.Request) {
     w.Write([]byte(`{"status": "success"}`))
 }
 
+func (a *App) UpdateStatusUploaded(w http.ResponseWriter, r *http.Request) {
+    postIDStr := r.PathValue("postId")
+    if postIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    postID, err := uuid.Parse(postIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    err = a.service.UpdateStatusUploaded(r.Context(), postID)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.WriteHeader(http.StatusCreated)
+}
+
 func (a *App) GetAllPosts(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodGet {
         a.sendError(w, apperrors.ErrMethodNotAllowed)
@@ -215,8 +237,9 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /createPost", app.CreatePost)
+	mux.HandleFunc("POST /updateStatusUploaded/{postId}", app.UpdateStatusUploaded)
 	mux.HandleFunc("POST /getPresignedUrls", app.GetPresignedUrls)
-	mux.HandleFunc("POST /{postId}/canvas", app.SaveCanvasHandler)
+	mux.HandleFunc("POST /saveCanvas/{postId}", app.SaveCanvasHandler)
 	mux.HandleFunc("GET /allPosts", app.GetAllPosts)
 	mux.HandleFunc("GET /getPost/{postId}", app.GetPost)
 
