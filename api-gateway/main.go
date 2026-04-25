@@ -145,12 +145,11 @@ func main() {
 		"/post/getPersonalPosts",
 	})
 
-	gateway.AddRoute("/rooms", "http://room-microservice:81", []string{
-		"/rooms/getRoomByRoomId",
-	})
-
 	gateway.AddRoute("/account", "http://account-microservice:81", []string{
 		"/account/updateRoom", "/account/room/[a-zA-Z0-9-]+",
+		"/account/checkRoomSubscription/[a-zA-Z0-9-]+",
+		"/account/unfollowRoom",
+		"/account/followRoom",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

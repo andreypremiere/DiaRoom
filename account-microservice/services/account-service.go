@@ -34,6 +34,31 @@ func (as *AccountService) GetRoomInfo(context context.Context, id uuid.UUID) (*r
 	return room, nil
 }
 
+func (s *AccountService) CheckSubscription(ctx context.Context, followerId, followingId uuid.UUID) (bool, error) {
+    isFollowed, err := s.accountRepo.CheckSubscription(ctx, followerId, followingId)
+    if err != nil {
+        return false, err
+    }
+    return isFollowed, nil
+}
+
+func (s *AccountService) Follow(ctx context.Context, followerId, followingId uuid.UUID) error {
+
+    err := s.accountRepo.AddSubscription(ctx, followerId, followingId)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (s *AccountService) Unfollow(ctx context.Context, followerId, followingId uuid.UUID) error {
+    err := s.accountRepo.RemoveSubscription(ctx, followerId, followingId)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
 func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) (*responses.UpdateRoomResponse, error) {
 	var response responses.UpdateRoomResponse
 

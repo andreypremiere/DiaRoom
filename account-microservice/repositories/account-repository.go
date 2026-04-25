@@ -21,6 +21,46 @@ type AccountRepository struct {
 	redisClient *redis.Client
 }
 
+func (r *AccountRepository) CheckSubscription(ctx context.Context, followerId, followingId uuid.UUID) (bool, error) {
+	var exists bool
+	query := `
+		SELECT EXISTS (
+			SELECT 1 
+			FROM subscriptions 
+			WHERE follower_id = $1 AND following_id = $2
+		);`
+
+	err := r.poolPg.QueryRow(ctx, query, followerId, followingId).Scan(&exists)
+	if err != nil {
+		return false, r.parseError(err)
+	}
+	return exists, nil
+}
+
+func (r *AccountRepository) AddSubscription(ctx context.Context, followerId, followingId uuid.UUID) error {
+	query := `
+		INSERT INTO subscriptions (follower_id, following_id) 
+		VALUES ($1, $2) 
+		ON CONFLICT (follower_id, following_id) DO NOTHING;`
+	_, err := r.poolPg.Exec(ctx, query, followerId, followingId)
+	if err != nil {
+		return r.parseError(err)
+	}
+	return nil
+}
+
+func (r *AccountRepository) RemoveSubscription(ctx context.Context, followerId, followingId uuid.UUID) error {
+	query := `
+		DELETE FROM subscriptions 
+		WHERE follower_id = $1 AND following_id = $2;`
+
+	_, err := r.poolPg.Exec(ctx, query, followerId, followingId)
+	if err != nil {
+		return r.parseError(err)
+	}
+	return nil
+}
+
 func (ar AccountRepository) GetRoomInfo(context context.Context, id uuid.UUID) (*responses.RoomInfo, error) {
 	query := `
 		SELECT avatar_url, room_name 

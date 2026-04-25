@@ -413,6 +413,106 @@ func (a *App) getRoomInfo(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(room)
 }
 
+func (a *App) checkSubscription(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
+        return
+    }
+
+    // Извлекаем ID комнаты из пути /account/checkRoomSubscription/{roomId}
+    targetRoomIDStr := r.PathValue("roomId")
+    targetRoomId, err := uuid.Parse(targetRoomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    // Получаем ID комнаты текущего пользователя (кто залогинен)
+    myRoomIDStr := r.Header.Get("X-Room-ID")
+    myRoomId, err := uuid.Parse(myRoomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+    isFollowed, err := a.accountService.CheckSubscription(r.Context(), myRoomId, targetRoomId)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "result": isFollowed,
+    })
+}
+
+// followRoom создает запись в таблице подписок
+func (a *App) followRoom(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
+        return
+    }
+
+    myRoomIDStr := r.Header.Get("X-Room-ID")
+    myRoomId, err := uuid.Parse(myRoomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+    var req struct {
+        FollowingID uuid.UUID `json:"following_id"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    if myRoomId == req.FollowingID {
+        a.sendError(w, apperrors.ErrInvalidInput) 
+        return
+    }
+
+    err = a.accountService.Follow(r.Context(), myRoomId, req.FollowingID)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.WriteHeader(http.StatusCreated)
+}
+
+func (a *App) unfollowRoom(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodDelete {
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
+        return
+    }
+
+    myRoomIDStr := r.Header.Get("X-Room-ID")
+    myRoomId, err := uuid.Parse(myRoomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+    var req struct {
+        FollowingID uuid.UUID `json:"following_id"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    err = a.accountService.Unfollow(r.Context(), myRoomId, req.FollowingID)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.WriteHeader(http.StatusNoContent)
+}
+
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -489,6 +589,10 @@ func main() {
     mux.HandleFunc("GET /room/{roomId}", app.getRoom)
     mux.HandleFunc("POST /updateRoom", app.updateRoom)
     mux.HandleFunc("GET /getRoomInfoById/{roomId}", app.getRoomInfoById)
+    mux.HandleFunc("GET /checkRoomSubscription/{roomId}", app.checkSubscription)
+    mux.HandleFunc("DELETE /unfollowRoom", app.unfollowRoom)
+    mux.HandleFunc("POST /followRoom", app.followRoom)
+    
 
     //Внутренние
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)
