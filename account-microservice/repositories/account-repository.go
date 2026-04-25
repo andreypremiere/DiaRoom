@@ -150,6 +150,26 @@ func (ar *AccountRepository) AddCodeWithTimeout(
 	return nil
 }
 
+// func (ar *AccountRepository) GetRoomInfoById(ctx context.Context, id uuid.UUID) (responses.RoomInfo, error) {
+// 	query := `
+//         SELECT room_name, avatar_url 
+//         FROM rooms 
+//         WHERE id = $1
+//     `
+
+//     var info responses.RoomInfo
+//     err := ar.poolPg.QueryRow(ctx, query, id).Scan(
+//         &info.RoomName,
+//         &info.AvatarUrl,
+//     )
+
+//     if err != nil {
+//         return responses.RoomInfo{}, ar.parseError(err)
+//     }
+
+//     return info, nil
+// }
+
 func (ar *AccountRepository) GetRoomsInfoByIds(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]responses.RoomInfo, error) {
 	query := `
         SELECT id, room_name, avatar_url 

@@ -25,6 +25,8 @@ type PostRepositoryInter interface {
     GetAllPosts(ctx context.Context) ([]responses.PostInfo, error)
     GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error)
 	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
+	GetPersonalPosts(ctx context.Context, roomId uuid.UUID) ([]responses.PostInfoPersonal, error)
+	GetRoomPosts(ctx context.Context, roomId uuid.UUID) ([]responses.PostInfo, error)
 }
 
 type PostRepository struct {
@@ -310,6 +312,109 @@ func (r *PostRepository) InsertCanvasAndUpdatePost(ctx context.Context, postID u
 	}
 
 	return err
+}
+
+func (r *PostRepository) GetPersonalPosts(ctx context.Context, roomId uuid.UUID) ([]responses.PostInfoPersonal, error) {
+    query := `
+        SELECT 
+            p.id, 
+            p.room_id, 
+            p.preview_url, 
+            p.category_slug, 
+            p.canvas_id, 
+            p.title, 
+            p.views_count, 
+            p.likes_count,
+            p.status,
+            p.ai_check_status
+        FROM posts p
+        WHERE p.room_id = $1 
+        ORDER BY p.created_at DESC
+    `
+
+    rows, err := r.db.Query(ctx, query, roomId)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    var posts []responses.PostInfoPersonal
+
+    for rows.Next() {
+        var p responses.PostInfoPersonal
+        err := rows.Scan(
+            &p.Id,
+            &p.RoomId,
+            &p.PreviewUrl,
+            &p.Category,
+            &p.CanvasId,
+            &p.Title,
+            &p.ViewsCount,
+            &p.LikesCount,
+            &p.Status,
+            &p.StatusAi,
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        posts = append(posts, p)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return posts, nil
+}
+
+func (r *PostRepository) GetRoomPosts(ctx context.Context, roomId uuid.UUID) ([]responses.PostInfo, error) {
+    query := `
+        SELECT 
+            p.id, 
+            p.room_id, 
+            p.preview_url, 
+            p.category_slug, 
+            p.canvas_id, 
+            p.title, 
+            p.views_count, 
+            p.likes_count
+        FROM posts p
+        WHERE p.room_id = $1 AND
+		p.status = 'published'
+        ORDER BY p.created_at DESC
+    `
+
+    rows, err := r.db.Query(ctx, query, roomId)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    var posts []responses.PostInfo
+
+    for rows.Next() {
+        var p responses.PostInfo
+        err := rows.Scan(
+            &p.Id,
+            &p.RoomId,
+            &p.PreviewUrl,
+            &p.Category,
+            &p.CanvasId,
+            &p.Title,
+            &p.ViewsCount,
+            &p.LikesCount,
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        posts = append(posts, p)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return posts, nil
 }
 
 func NewPostRepository(db *pgxpool.Pool, redis *redis.Client) *PostRepository {

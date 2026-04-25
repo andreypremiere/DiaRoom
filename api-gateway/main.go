@@ -142,6 +142,7 @@ func main() {
 		"/post/createPost",
 		"/post/publishPost",
 		"/post/saveCanvas/[a-zA-Z0-9-]+",
+		"/post/getPersonalPosts",
 	})
 
 	gateway.AddRoute("/rooms", "http://room-microservice:81", []string{

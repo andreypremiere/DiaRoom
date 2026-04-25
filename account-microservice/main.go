@@ -359,6 +359,30 @@ func (a *App) getRoomsInfo(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(roomsMap)
 }
 
+func (a *App) getRoomInfoById(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
+        return
+    }
+
+    roomIDStr := r.PathValue("roomId")
+    roomId, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    room, err := a.accountService.GetRoomInfo(r.Context(), roomId)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(room)
+}
+
 func (a *App) getRoomInfo(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
         a.sendError(w, apperrors.ErrMethodNotAllowed)
@@ -464,6 +488,7 @@ func main() {
 	mux.HandleFunc("POST /logout", app.logout)
     mux.HandleFunc("GET /room/{roomId}", app.getRoom)
     mux.HandleFunc("POST /updateRoom", app.updateRoom)
+    mux.HandleFunc("GET /getRoomInfoById/{roomId}", app.getRoomInfoById)
 
     //Внутренние
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)

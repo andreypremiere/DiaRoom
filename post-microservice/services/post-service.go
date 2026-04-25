@@ -26,6 +26,8 @@ type PostServiceInter interface {
 	GetAllPosts(ctx context.Context) ([]responses.Post, error)
 	GetPostForShowing(ctx context.Context, postId uuid.UUID) (*responses.ShowingPost, error)
 	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
+	GetPersonalPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfoPersonal, error)
+	GetRoomPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfo, error)
 }
 
 type PostService struct {
@@ -33,6 +35,38 @@ type PostService struct {
 	s3Client   *s3.Client
 	bucketMediaName string
 	accountClient *clients.AccountClient
+}
+
+func (s *PostService) GetRoomPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfo, error) {
+	posts, err := s.repo.GetRoomPosts(ctx, roomId)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(posts) == 0 {
+		return []responses.PostInfo{}, nil
+	}
+
+	for i := range posts {
+		posts[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", posts[i].PreviewUrl)
+	}
+	return posts, nil
+}
+
+func (s *PostService) GetPersonalPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfoPersonal, error) {
+	posts, err := s.repo.GetPersonalPosts(ctx, roomId)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(posts) == 0 {
+		return []responses.PostInfoPersonal{}, nil
+	}
+
+	for i := range posts {
+		posts[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", posts[i].PreviewUrl)
+	}
+	return posts, nil
 }
 
 func (s *PostService) GetPostForShowing(ctx context.Context, postId uuid.UUID) (*responses.ShowingPost, error) {

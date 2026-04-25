@@ -113,6 +113,30 @@ func (a *App) GetPresignedUrls(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(result)
 }
 
+func (a *App) GetPersonalPosts(w http.ResponseWriter, r *http.Request) {
+    roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    roomID, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    result, err := a.service.GetPersonalPosts(r.Context(), roomID)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(result)
+}
+
 func (a *App) SaveCanvasHandler(w http.ResponseWriter, r *http.Request) {
     postIDStr := r.PathValue("postId")
     if postIDStr == "" {
@@ -206,6 +230,30 @@ func (a *App) GetPost(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(post)
 }
 
+func (a *App) GetRoomPosts(w http.ResponseWriter, r *http.Request) {
+    roomIDStr := r.PathValue("roomID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    roomID, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    posts, err := a.service.GetRoomPosts(r.Context(), roomID)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(posts)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
@@ -242,6 +290,8 @@ func main() {
 	mux.HandleFunc("POST /saveCanvas/{postId}", app.SaveCanvasHandler)
 	mux.HandleFunc("GET /allPosts", app.GetAllPosts)
 	mux.HandleFunc("GET /getPost/{postId}", app.GetPost)
+    mux.HandleFunc("GET /getPersonalPosts", app.GetPersonalPosts)
+    mux.HandleFunc("GET /getRoomPosts/{roomID}", app.GetRoomPosts)
 
 	server := &http.Server{
         Addr:    ":81",
