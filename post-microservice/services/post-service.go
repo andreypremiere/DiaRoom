@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,10 +15,10 @@ import (
 	"post-microservice/contracts/responses"
 	"post-microservice/models"
 	"post-microservice/repositories"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
-	
 )
 
 type PostServiceInter interface {
@@ -28,6 +30,8 @@ type PostServiceInter interface {
 	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
 	GetPersonalPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfoPersonal, error)
 	GetRoomPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfo, error)
+	SyncViewsToDatabase(ctx context.Context)
+	RecordView(ctx context.Context, postId uuid.UUID, userId uuid.UUID) error
 }
 
 type PostService struct {
@@ -35,6 +39,43 @@ type PostService struct {
 	s3Client   *s3.Client
 	bucketMediaName string
 	accountClient *clients.AccountClient
+}
+
+func (s *PostService) RecordView(ctx context.Context, postId uuid.UUID, roomId uuid.UUID) error {
+    lockKey := fmt.Sprintf("view_lock:%s:%s", postId, roomId)
+    
+    // 1. Проверяем, смотрел ли пользователь этот пост за последние 2 часа
+    alreadyViewed, err := s.repo.CheckView(ctx, lockKey)
+    if err != nil {
+        return err
+    }
+    
+    if alreadyViewed > 0 {
+        return nil 
+    }
+
+	s.repo.SetView(ctx, lockKey, "1", 2 * time.Hour)
+
+	err = s.repo.HIncrView(ctx, postId.String())
+	return err
+}
+
+func (s *PostService) SyncViewsToDatabase(ctx context.Context) {
+    viewsMap, err := s.repo.GetAllViews(ctx)
+    if err != nil || len(viewsMap) == 0 {
+        return
+    }
+
+    toUpdate := make(map[string]int)
+    for id, countStr := range viewsMap {
+        if count, err := strconv.Atoi(countStr); err == nil {
+            toUpdate[id] = count
+        }
+    }
+
+    if err := s.repo.BulkIncrementViews(ctx, toUpdate); err != nil {
+        log.Printf("Error syncing views: %v", err)
+    }
 }
 
 func (s *PostService) GetRoomPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfo, error) {

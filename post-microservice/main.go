@@ -254,6 +254,50 @@ func (a *App) GetRoomPosts(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(posts)
 }
 
+func (a *App) recordPostView(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        a.sendError(w, apperrors.ErrMethodNotAllowed)
+        return
+    }
+
+    postIDStr := r.PathValue("postId")
+    postId, err := uuid.Parse(postIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    roomId, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+    err = a.service.RecordView(r.Context(), postId, roomId)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+}
+
+func (a *App) StartViewSyncWorker(ctx context.Context) {
+    ticker := time.NewTicker(1 * time.Minute)
+    go func() {
+        for range ticker.C {
+            a.service.SyncViewsToDatabase(ctx)
+        }
+    }()
+}
+
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
@@ -275,12 +319,17 @@ func main() {
     redisClient := database.InitRedisQueue()
     defer redisClient.Close() 
 
+    redisStats := database.InitRedisStats()
+    defer redisStats.Close()
+
 	accountClient := clients.NewAccountClient("http://account-microservice:81")
 
-	repository := repositories.NewPostRepository(pool, redisClient)
+	repository := repositories.NewPostRepository(pool, redisClient, redisStats)
 	service := services.NewPostService(repository, s3Client, "media-for-publication", accountClient)
 
 	app := App{service: service}
+
+    app.StartViewSyncWorker(ctx)
 	
 	mux := http.NewServeMux()
 
@@ -292,6 +341,7 @@ func main() {
 	mux.HandleFunc("GET /getPost/{postId}", app.GetPost)
     mux.HandleFunc("GET /getPersonalPosts", app.GetPersonalPosts)
     mux.HandleFunc("GET /getRoomPosts/{roomID}", app.GetRoomPosts)
+    mux.HandleFunc("POST /view/{postId}", app.recordPostView)
 
 	server := &http.Server{
         Addr:    ":81",

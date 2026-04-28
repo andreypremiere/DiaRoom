@@ -7,6 +7,7 @@ import (
 	apperrors "post-microservice/app-errors"
 	"post-microservice/contracts/responses"
 	"post-microservice/models"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -27,12 +28,17 @@ type PostRepositoryInter interface {
 	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
 	GetPersonalPosts(ctx context.Context, roomId uuid.UUID) ([]responses.PostInfoPersonal, error)
 	GetRoomPosts(ctx context.Context, roomId uuid.UUID) ([]responses.PostInfo, error)
+	GetAllViews(ctx context.Context) (map[string]string, error)
+	BulkIncrementViews(ctx context.Context, views map[string]int) error
+	CheckView(ctx context.Context, key string) (int64, error)
+	SetView(ctx context.Context, key string, count string, time time.Duration)
+	HIncrView(ctx context.Context, postId string) error
 }
 
 type PostRepository struct {
 	db *pgxpool.Pool	
     redis *redis.Client
-
+	redisStats *redis.Client
 }
 
 func (r *PostRepository) parseError(err error) error {
@@ -61,6 +67,65 @@ func (r *PostRepository) parseError(err error) error {
 	}
 
 	return apperrors.ErrInternal
+}
+
+func (r *PostRepository) HIncrView(ctx context.Context, postId string) error {
+	err := r.redisStats.HIncrBy(ctx, "post_views_buffer", postId, 1).Err()
+	if err != nil {
+		return r.parseError(err)
+	}
+	return nil
+}
+
+func (r *PostRepository) SetView(ctx context.Context, key string, count string, time time.Duration) {
+	r.redisStats.Set(ctx, key, count, time)
+}
+
+func (r *PostRepository) CheckView(ctx context.Context, key string) (int64, error) {
+	alreadyViewed, err := r.redisStats.Exists(ctx, key).Result()
+    if err != nil {
+        return -1, r.parseError(err)
+    }
+	return alreadyViewed, nil
+}
+
+func (r *PostRepository) GetAllViews(ctx context.Context) (map[string]string, error) {
+	viewsMap, err := r.redisStats.HGetAll(ctx, "post_views_buffer").Result()
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	r.redisStats.Del(ctx, "post_views_buffer")
+	return viewsMap, nil
+}
+
+func (r *PostRepository) BulkIncrementViews(ctx context.Context, views map[string]int) error {
+	if len(views) == 0 {
+		return nil
+	}
+
+	ids := make([]uuid.UUID, 0, len(views))
+	counts := make([]int32, 0, len(views))
+
+	for idStr, count := range views {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			continue 
+		}
+		ids = append(ids, id)
+		counts = append(counts, int32(count))
+	}
+
+	query := `
+		UPDATE posts AS p
+		SET views_count = p.views_count + v.inc
+		FROM (
+			SELECT unnest($1::uuid[]) AS id, unnest($2::int[]) AS inc
+		) AS v
+		WHERE p.id = v.id
+	`
+
+	_, err := r.db.Exec(ctx, query, ids, counts)
+	return err
 }
 
 func (r *PostRepository) GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error) {
@@ -417,6 +482,6 @@ func (r *PostRepository) GetRoomPosts(ctx context.Context, roomId uuid.UUID) ([]
     return posts, nil
 }
 
-func NewPostRepository(db *pgxpool.Pool, redis *redis.Client) *PostRepository {
-	return &PostRepository{db: db, redis: redis}
+func NewPostRepository(db *pgxpool.Pool, redis *redis.Client, redisStats *redis.Client) *PostRepository {
+	return &PostRepository{db: db, redis: redis, redisStats: redisStats}
 }

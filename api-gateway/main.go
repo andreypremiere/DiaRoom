@@ -143,6 +143,7 @@ func main() {
 		"/post/publishPost",
 		"/post/saveCanvas/[a-zA-Z0-9-]+",
 		"/post/getPersonalPosts",
+		"/post/view/[a-zA-Z0-9-]+",
 	})
 
 	gateway.AddRoute("/account", "http://account-microservice:81", []string{
