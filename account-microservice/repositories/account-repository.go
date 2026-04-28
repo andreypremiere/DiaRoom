@@ -64,6 +64,49 @@ func (r *AccountRepository) GetFollowers(ctx context.Context, roomId uuid.UUID, 
     return authors, nil
 }
 
+func (r *AccountRepository) GetFollowing(ctx context.Context, roomId uuid.UUID, limit, offset int) ([]responses.RoomInfo, error) {
+    query := `
+        SELECT 
+            r.id, 
+            r.room_name, 
+            r.avatar_url
+        FROM subscriptions s
+        JOIN rooms r ON s.following_id = r.id
+        WHERE s.follower_id = $1
+        ORDER BY s.created_at DESC
+        LIMIT $2 OFFSET $3;
+    `
+
+    rows, err := r.poolPg.Query(ctx, query, roomId, limit, offset)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    rooms := make([]responses.RoomInfo, 0, limit)
+
+    for rows.Next() {
+        var rm responses.RoomInfo
+        
+        err := rows.Scan(
+            &rm.Id,  
+            &rm.RoomName,
+            &rm.AvatarUrl,  
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        
+        rooms = append(rooms, rm)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return rooms, nil
+}
+
 func (r *AccountRepository) CheckSubscription(ctx context.Context, followerId, followingId uuid.UUID) (bool, error) {
 	var exists bool
 	query := `

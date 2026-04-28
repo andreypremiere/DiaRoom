@@ -49,6 +49,32 @@ func (as *AccountService) GetRoomFollowers(ctx context.Context, roomId uuid.UUID
 	return authors, nil
 }
 
+func (as *AccountService) GetRoomFollowing(ctx context.Context, roomId uuid.UUID, page int, limit int) ([]responses.RoomInfo, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+
+	offset := (page - 1) * limit
+
+	authors, err := as.accountRepo.GetFollowing(ctx, roomId, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	if authors == nil {
+		return []responses.RoomInfo{}, nil
+	}
+
+	for id, room := range authors {
+		authors[id].AvatarUrl = as.s3Manager.FormatFullURL(room.AvatarUrl)
+	}
+
+	return authors, nil
+}
+
 func (as *AccountService) GetRoomInfo(context context.Context, id uuid.UUID) (*responses.RoomInfo, error) {
 	room, err := as.accountRepo.GetRoomInfo(context, id)
 	if err != nil {
