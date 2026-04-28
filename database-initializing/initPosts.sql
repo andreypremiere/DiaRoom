@@ -125,3 +125,32 @@ VALUES
     ('lifestyle-blog', 'Жизнь и Блог')
 ON CONFLICT (slug) 
 DO UPDATE SET name = EXCLUDED.name;
+
+-- Таблица лайков
+CREATE TABLE post_likes (
+    post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    room_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (post_id, room_id)
+);
+
+-- Индекс для быстрого получения всех лайкнувших конкретный пост
+CREATE INDEX idx_post_likes_post_id ON post_likes(post_id);
+
+-- Функция триггера для обновления счетчика в таблице posts
+CREATE OR REPLACE FUNCTION fn_update_post_likes_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE posts SET likes_count = likes_count + 1 WHERE id = NEW.post_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE posts SET likes_count = likes_count - 1 WHERE id = OLD.post_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Сам триггер
+CREATE TRIGGER tr_post_likes_count
+AFTER INSERT OR DELETE ON post_likes
+FOR EACH ROW EXECUTE FUNCTION fn_update_post_likes_count();

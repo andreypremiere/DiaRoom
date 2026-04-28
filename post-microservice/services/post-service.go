@@ -32,6 +32,9 @@ type PostServiceInter interface {
 	GetRoomPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfo, error)
 	SyncViewsToDatabase(ctx context.Context)
 	RecordView(ctx context.Context, postId uuid.UUID, userId uuid.UUID) error
+	LikePost(ctx context.Context, postId, roomId uuid.UUID) error
+	UnlikePost(ctx context.Context, postId, roomId uuid.UUID) error
+	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
 }
 
 type PostService struct {
@@ -39,6 +42,18 @@ type PostService struct {
 	s3Client   *s3.Client
 	bucketMediaName string
 	accountClient *clients.AccountClient
+}
+
+func (s *PostService) LikePost(ctx context.Context, postId, roomId uuid.UUID) error {
+	return s.repo.AddLike(ctx, postId, roomId)
+}
+
+func (s *PostService) UnlikePost(ctx context.Context, postId, roomId uuid.UUID) error {
+	return s.repo.RemoveLike(ctx, postId, roomId)
+}
+
+func (s *PostService) CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error) {
+    return s.repo.CheckLikeStatus(ctx, postId, roomId)
 }
 
 func (s *PostService) RecordView(ctx context.Context, postId uuid.UUID, roomId uuid.UUID) error {

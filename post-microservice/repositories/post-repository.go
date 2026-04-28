@@ -33,6 +33,9 @@ type PostRepositoryInter interface {
 	CheckView(ctx context.Context, key string) (int64, error)
 	SetView(ctx context.Context, key string, count string, time time.Duration)
 	HIncrView(ctx context.Context, postId string) error
+	AddLike(ctx context.Context, postId, roomId uuid.UUID) error
+	RemoveLike(ctx context.Context, postId, roomId uuid.UUID) error
+	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
 }
 
 type PostRepository struct {
@@ -67,6 +70,28 @@ func (r *PostRepository) parseError(err error) error {
 	}
 
 	return apperrors.ErrInternal
+}
+
+func (r *PostRepository) AddLike(ctx context.Context, postId, roomId uuid.UUID) error {
+    query := `INSERT INTO post_likes (post_id, room_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
+    _, err := r.db.Exec(ctx, query, postId, roomId)
+    return r.parseError(err)
+}
+
+func (r *PostRepository) RemoveLike(ctx context.Context, postId, roomId uuid.UUID) error {
+    query := `DELETE FROM post_likes WHERE post_id = $1 AND room_id = $2`
+    _, err := r.db.Exec(ctx, query, postId, roomId)
+    return r.parseError(err)
+}
+
+func (r *PostRepository) CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error) {
+    var exists bool
+    query := `SELECT EXISTS(SELECT 1 FROM post_likes WHERE post_id = $1 AND room_id = $2)`
+    err := r.db.QueryRow(ctx, query, postId, roomId).Scan(&exists)
+	if err != nil {
+		return exists, r.parseError(err)
+	}
+    return exists, err
 }
 
 func (r *PostRepository) HIncrView(ctx context.Context, postId string) error {
