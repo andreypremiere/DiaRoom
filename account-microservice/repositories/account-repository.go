@@ -21,6 +21,49 @@ type AccountRepository struct {
 	redisClient *redis.Client
 }
 
+func (r *AccountRepository) GetFollowers(ctx context.Context, roomId uuid.UUID, limit, offset int) ([]responses.RoomInfo, error) {
+	query := `
+		SELECT 
+		r.id, 
+		r.room_name, 
+		r.avatar_url
+		FROM subscriptions s
+		JOIN rooms r ON s.follower_id = r.id
+		WHERE s.following_id = $1
+		ORDER BY s.created_at DESC
+		LIMIT $2 OFFSET $3;
+	`
+
+	rows, err := r.poolPg.Query(ctx, query, roomId, limit, offset)
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	authors := make([]responses.RoomInfo, 0, limit)
+
+    for rows.Next() {
+        var a responses.RoomInfo
+        
+        err := rows.Scan(
+            &a.Id,  
+            &a.RoomName,
+            &a.AvatarUrl,  
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        
+        authors = append(authors, a)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return authors, nil
+}
+
 func (r *AccountRepository) CheckSubscription(ctx context.Context, followerId, followingId uuid.UUID) (bool, error) {
 	var exists bool
 	query := `
@@ -161,7 +204,9 @@ func (ar AccountRepository) GetRoom(context context.Context, roomId uuid.UUID) (
                  FROM room_categories 
                  WHERE room_id = rooms.id), 
                 '{}'
-            )
+            ),
+			followers_count,
+			following_count
         FROM rooms 
         WHERE id = $1`
 
@@ -172,6 +217,8 @@ func (ar AccountRepository) GetRoom(context context.Context, roomId uuid.UUID) (
 		&room.AvatarPath,
 		&room.BackgroundPath,
 		&room.ListCategory,
+		&room.CountFollowers,
+		&room.CountFollowing,
 	)
 
 	if err != nil {

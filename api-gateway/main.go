@@ -153,6 +153,7 @@ func main() {
 		"/account/checkRoomSubscription/[a-zA-Z0-9-]+",
 		"/account/unfollowRoom",
 		"/account/followRoom",
+		"/account/followers/[a-zA-Z0-9-]+",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

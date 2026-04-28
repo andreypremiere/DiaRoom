@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -513,6 +514,50 @@ func (a *App) unfollowRoom(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusNoContent)
 }
 
+func (a *App) GetFollowersHandler(w http.ResponseWriter, r *http.Request) {
+	roomIdStr := r.PathValue("roomId") 
+
+    if roomIdStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput) 
+        return
+    }
+
+    roomId, err := uuid.Parse(roomIdStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput) 
+        return
+    }
+
+    query := r.URL.Query()
+
+    page, err := strconv.Atoi(query.Get("page"))
+    if err != nil || page < 1 {
+        page = 1
+        fmt.Println("Ошибка извлечения параметров page")
+    }
+
+    limit, err := strconv.Atoi(query.Get("limit"))
+    if err != nil || limit < 1 || limit > 100 { 
+        limit = 20
+        fmt.Println("Ошибка извлечения параметров limit")
+    }
+
+
+	authors, err := a.accountService.GetRoomFollowers(r.Context(), roomId, page, limit)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	response := map[string]interface{}{
+		"authors": authors, 
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -592,7 +637,7 @@ func main() {
     mux.HandleFunc("GET /checkRoomSubscription/{roomId}", app.checkSubscription)
     mux.HandleFunc("DELETE /unfollowRoom", app.unfollowRoom)
     mux.HandleFunc("POST /followRoom", app.followRoom)
-    
+    mux.HandleFunc("GET /followers/{roomId}", app.GetFollowersHandler)
 
     //Внутренние
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)
