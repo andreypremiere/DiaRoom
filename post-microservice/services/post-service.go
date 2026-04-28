@@ -35,6 +35,7 @@ type PostServiceInter interface {
 	LikePost(ctx context.Context, postId, roomId uuid.UUID) error
 	UnlikePost(ctx context.Context, postId, roomId uuid.UUID) error
 	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
+	GetPostLikers(ctx context.Context, postId uuid.UUID, page int, limit int) ([]responses.Room, error)
 }
 
 type PostService struct {
@@ -42,6 +43,44 @@ type PostService struct {
 	s3Client   *s3.Client
 	bucketMediaName string
 	accountClient *clients.AccountClient
+}
+
+func (s *PostService) GetPostLikers(ctx context.Context, postId uuid.UUID, page int, limit int) ([]responses.Room, error) {
+    if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+
+	offset := (page - 1) * limit
+	
+	likerIds, err := s.repo.GetPostLikerIds(ctx, postId, limit, offset)
+    if err != nil {
+        return nil, err
+    }
+
+    if len(likerIds) == 0 {
+        return []responses.Room{}, nil
+    }
+
+    roomsData, err := s.accountClient.GetAuthorsBatch(ctx, likerIds)
+    if err != nil {
+        return nil, apperrors.ErrInternal
+    }
+
+    result := make([]responses.Room, 0, len(likerIds))
+    for _, id := range likerIds {
+        if info, ok := roomsData[id]; ok {
+            result = append(result, responses.Room{
+                Id:        id,
+                AvatarUrl: info.AvatarUrl,
+                RoomName:  info.RoomName,
+            })
+        }
+    }
+
+    return result, nil
 }
 
 func (s *PostService) LikePost(ctx context.Context, postId, roomId uuid.UUID) error {

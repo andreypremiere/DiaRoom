@@ -36,6 +36,7 @@ type PostRepositoryInter interface {
 	AddLike(ctx context.Context, postId, roomId uuid.UUID) error
 	RemoveLike(ctx context.Context, postId, roomId uuid.UUID) error
 	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
+	GetPostLikerIds(ctx context.Context, postId uuid.UUID, limit, offset int) ([]uuid.UUID, error)
 }
 
 type PostRepository struct {
@@ -70,6 +71,38 @@ func (r *PostRepository) parseError(err error) error {
 	}
 
 	return apperrors.ErrInternal
+}
+
+func (r *PostRepository) GetPostLikerIds(ctx context.Context, postId uuid.UUID, limit, offset int) ([]uuid.UUID, error) {
+    query := `
+        SELECT room_id
+        FROM post_likes
+        WHERE post_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3;
+    `
+
+    rows, err := r.db.Query(ctx, query, postId, limit, offset)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    ids := make([]uuid.UUID, 0, limit)
+
+    for rows.Next() {
+        var id uuid.UUID
+        if err := rows.Scan(&id); err != nil {
+            return nil, r.parseError(err)
+        }
+        ids = append(ids, id)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return ids, nil
 }
 
 func (r *PostRepository) AddLike(ctx context.Context, postId, roomId uuid.UUID) error {

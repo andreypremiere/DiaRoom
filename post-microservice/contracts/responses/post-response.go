@@ -42,3 +42,9 @@ type PostInfoPersonal struct {
 	Status string `json:"status"`
 	StatusAi string `json:"statusAi"`
 }
+
+type Room struct {
+	Id  uuid.UUID `json:"roomId"`
+	AvatarUrl string `json:"avatarUrl"`
+	RoomName  string `json:"roomName"`
+}

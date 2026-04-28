@@ -15,6 +15,7 @@ import (
 	"post-microservice/models"
 	"post-microservice/repositories"
 	"post-microservice/services"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -349,6 +350,50 @@ func (a *App) handleCheckLikeStatus(w http.ResponseWriter, r *http.Request) {
     })
 }
 
+func (a *App) GetPostLikersHandler(w http.ResponseWriter, r *http.Request) {
+    postIdStr := r.PathValue("postId") 
+    if postIdStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput) 
+        return
+    }
+
+    postId, err := uuid.Parse(postIdStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput) 
+        return
+    }
+
+    query := r.URL.Query()
+
+    page, err := strconv.Atoi(query.Get("page"))
+    if err != nil || page < 1 {
+        page = 1
+        fmt.Println("Ошибка извлечения параметров page, установлен default: 1")
+    }
+
+    limit, err := strconv.Atoi(query.Get("limit"))
+    if err != nil || limit < 1 || limit > 100 { 
+        limit = 20
+        fmt.Println("Ошибка извлечения параметров limit, установлен default: 20")
+    }
+
+    likers, err := a.service.GetPostLikers(r.Context(), postId, page, limit)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    response := map[string]interface{}{
+        "authors": likers, 
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    if err := json.NewEncoder(w).Encode(response); err != nil {
+        fmt.Printf("Ошибка кодирования JSON: %v\n", err)
+    }
+}
+
 // Воркер для просмотров
 func (a *App) StartViewSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Minute)
@@ -406,6 +451,7 @@ func main() {
 	mux.HandleFunc("POST /like/{postId}", app.handleLikePost)
 	mux.HandleFunc("DELETE /like/{postId}", app.handleUnlikePost)
     mux.HandleFunc("GET /isLiked/{postId}", app.handleCheckLikeStatus)
+	mux.HandleFunc("GET /likers/{postId}", app.GetPostLikersHandler)
 
 	server := &http.Server{
 		Addr:    ":81",
