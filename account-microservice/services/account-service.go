@@ -111,6 +111,16 @@ func (s *AccountService) Unfollow(ctx context.Context, followerId, followingId u
     return nil
 }
 
+func (s *AccountService) SetConfigured(ctx context.Context, userID uuid.UUID) error {
+    
+    err := s.accountRepo.SetConfigured(ctx, userID)
+    if err != nil {
+        return err
+    }
+    
+    return nil
+}
+
 func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) (*responses.UpdateRoomResponse, error) {
 	var response responses.UpdateRoomResponse
 

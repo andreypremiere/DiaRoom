@@ -332,6 +332,25 @@ func (a *App) updateRoom(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(response)
 }
 
+func (a *App) SetConfiguredHandler(w http.ResponseWriter, r *http.Request) {
+    userIDStr := r.Header.Get("X-User-ID")
+
+    userId, err := uuid.Parse(userIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+    err = a.accountService.SetConfigured(r.Context(), userId)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+}
+
 func (a *App) getRoomsInfo(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
         a.sendError(w, apperrors.ErrMethodNotAllowed)
@@ -682,6 +701,7 @@ func main() {
     mux.HandleFunc("POST /followRoom", app.followRoom)
     mux.HandleFunc("GET /followers/{roomId}", app.GetFollowersHandler)
     mux.HandleFunc("GET /following/{roomId}", app.GetFollowingHandler)
+    mux.HandleFunc("POST /setConfigured", app.SetConfiguredHandler)
 
     //Внутренние
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)

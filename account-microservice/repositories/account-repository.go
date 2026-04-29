@@ -169,6 +169,21 @@ func (ar AccountRepository) GetRoomInfo(context context.Context, id uuid.UUID) (
 	return &info, nil
 }
 
+func (r *AccountRepository) SetConfigured(ctx context.Context, userID uuid.UUID) error {
+    query := `UPDATE users SET is_configured = true WHERE id = $1`
+    
+    result, err := r.poolPg.Exec(ctx, query, userID)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound
+    }
+
+    return nil
+}
+
 func (ar AccountRepository) UpdateRoom(ctx context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) error {
 	tx, err := ar.poolPg.Begin(ctx)
 	if err != nil {
@@ -279,26 +294,6 @@ func (ar *AccountRepository) AddCodeWithTimeout(
 	}
 	return nil
 }
-
-// func (ar *AccountRepository) GetRoomInfoById(ctx context.Context, id uuid.UUID) (responses.RoomInfo, error) {
-// 	query := `
-//         SELECT room_name, avatar_url 
-//         FROM rooms 
-//         WHERE id = $1
-//     `
-
-//     var info responses.RoomInfo
-//     err := ar.poolPg.QueryRow(ctx, query, id).Scan(
-//         &info.RoomName,
-//         &info.AvatarUrl,
-//     )
-
-//     if err != nil {
-//         return responses.RoomInfo{}, ar.parseError(err)
-//     }
-
-//     return info, nil
-// }
 
 func (ar *AccountRepository) GetRoomsInfoByIds(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]responses.RoomInfo, error) {
 	query := `
