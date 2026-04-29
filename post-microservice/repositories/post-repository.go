@@ -37,12 +37,79 @@ type PostRepositoryInter interface {
 	RemoveLike(ctx context.Context, postId, roomId uuid.UUID) error
 	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
 	GetPostLikerIds(ctx context.Context, postId uuid.UUID, limit, offset int) ([]uuid.UUID, error)
+	DeletePost(ctx context.Context, postId uuid.UUID) error
 }
 
 type PostRepository struct {
 	db *pgxpool.Pool	
     redis *redis.Client
 	redisStats *redis.Client
+}
+
+func (r *PostRepository) DeletePost(ctx context.Context, postId uuid.UUID) error {
+    tx, err := r.db.Begin(ctx)
+    if err != nil {
+        return r.parseError(err)
+    }
+    defer tx.Rollback(ctx)
+
+    // Получаем canvas_id и ID хештегов перед удалением
+    var canvasId uuid.UUID
+    var hashtagIds []int
+
+    err = tx.QueryRow(ctx, `
+        SELECT canvas_id, 
+               COALESCE((SELECT array_agg(hashtag_id) FROM posts_hashtags WHERE post_id = $1), '{}')
+        FROM posts WHERE id = $1
+    `, postId).Scan(&canvasId, &hashtagIds)
+    
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    // Уменьшаем счетчик использования хештегов
+    if len(hashtagIds) > 0 {
+        _, err = tx.Exec(ctx, `
+            UPDATE hashtags 
+            SET usage_count = usage_count - 1 
+            WHERE id = any($1)
+        `, hashtagIds)
+        if err != nil {
+            return r.parseError(err)
+        }
+    }
+
+    // Удаляем связи с хештегами (таблица posts_hashtags)
+    _, err = tx.Exec(ctx, "DELETE FROM posts_hashtags WHERE post_id = $1", postId)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    // Удаляем лайки (таблица post_likes)
+    _, err = tx.Exec(ctx, "DELETE FROM post_likes WHERE post_id = $1", postId)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    // Удаляем сам пост
+    result, err := tx.Exec(ctx, "DELETE FROM posts WHERE id = $1", postId)
+    if err != nil {
+        return r.parseError(err)
+    }
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound
+    }
+
+    // Удаляем canvas (так как canvas_id был во внешней таблице, удаляем его последним)
+    if canvasId != uuid.Nil {
+        _, err = tx.Exec(ctx, "DELETE FROM canvases WHERE id = $1", canvasId)
+        if err != nil {
+            return r.parseError(err)
+        }
+    }
+
+    // Фиксация транзакции
+    return tx.Commit(ctx)
 }
 
 func (r *PostRepository) parseError(err error) error {

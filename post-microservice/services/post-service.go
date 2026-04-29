@@ -18,6 +18,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
 
@@ -36,6 +37,7 @@ type PostServiceInter interface {
 	UnlikePost(ctx context.Context, postId, roomId uuid.UUID) error
 	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
 	GetPostLikers(ctx context.Context, postId uuid.UUID, page int, limit int) ([]responses.Room, error)
+	DeletePost(ctx context.Context, roomId uuid.UUID, postId uuid.UUID) (error)
 }
 
 type PostService struct {
@@ -43,6 +45,51 @@ type PostService struct {
 	s3Client   *s3.Client
 	bucketMediaName string
 	accountClient *clients.AccountClient
+}
+
+func (s *PostService) DeletePost(ctx context.Context, roomId uuid.UUID, postId uuid.UUID) (error) {
+	prefix := fmt.Sprintf("%s/%s/", roomId.String(), postId.String())
+
+	listOutput, err := s.s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucketMediaName),
+		Prefix: aws.String(prefix),
+	})
+	if err != nil {
+		fmt.Println("Ошибка во время получения файлов")
+		return apperrors.ErrInternal
+	}
+
+	// fmt.Println("Полученный список:")
+	// spew.Dump(listOutput.Contents)
+
+	if len(listOutput.Contents) > 0 {
+		var objectsToDelete []types.ObjectIdentifier
+		for _, object := range listOutput.Contents {
+			objectsToDelete = append(objectsToDelete, types.ObjectIdentifier{
+				Key: object.Key,
+			})
+		}
+
+		_, err = s.s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(s.bucketMediaName),
+			Delete: &types.Delete{
+				Objects: objectsToDelete,
+				Quiet:   aws.Bool(true),
+			},
+		})
+		if err != nil {
+			fmt.Println("Ошибка во время удаления медиа.")
+			return apperrors.ErrInternal
+		}
+	}
+
+	err = s.repo.DeletePost(ctx, postId)
+	if err != nil {
+		fmt.Println("Ошибка во время удаления в бд.")
+		return apperrors.ErrInternal
+	}
+
+	return nil
 }
 
 func (s *PostService) GetPostLikers(ctx context.Context, postId uuid.UUID, page int, limit int) ([]responses.Room, error) {

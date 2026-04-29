@@ -147,6 +147,7 @@ func main() {
 		"/post/like/[a-zA-Z0-9-]+",
 		"/post/isLiked/[a-zA-Z0-9-]+",
 		"/post/likers/[a-zA-Z0-9-]+",
+		"/post/deletePost/[a-zA-Z0-9-]+",
 	})
 
 	gateway.AddRoute("/account", "http://account-microservice:81", []string{

@@ -394,6 +394,43 @@ func (a *App) GetPostLikersHandler(w http.ResponseWriter, r *http.Request) {
     }
 }
 
+func (a *App) DeletePostHandler(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+    
+    roomID, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+    postIdStr := r.PathValue("postId")
+    if postIdStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    postId, err := uuid.Parse(postIdStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    // В сервисе должна быть проверка, что пост удаляет именно его автор!
+	// Сейчас без нее
+    err = a.service.DeletePost(r.Context(), roomID, postId)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusNoContent)
+}
+
 // Воркер для просмотров
 func (a *App) StartViewSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Minute)
@@ -452,6 +489,7 @@ func main() {
 	mux.HandleFunc("DELETE /like/{postId}", app.handleUnlikePost)
     mux.HandleFunc("GET /isLiked/{postId}", app.handleCheckLikeStatus)
 	mux.HandleFunc("GET /likers/{postId}", app.GetPostLikersHandler)
+	mux.HandleFunc("DELETE /deletePost/{postId}", app.DeletePostHandler)
 
 	server := &http.Server{
 		Addr:    ":81",
