@@ -304,8 +304,9 @@ func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo,
 			p.likes_count
 		FROM posts p
 		WHERE p.status = 'published' 
+          AND p.ai_check_status = 'passed'
           AND p.canvas_id IS NOT NULL
-		ORDER BY p.created_at DESC
+		ORDER BY p.published_at DESC
 	`
 
 	rows, err := r.db.Query(ctx, query)

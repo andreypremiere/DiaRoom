@@ -288,12 +288,6 @@ func (s *PostService) CreateAndAttachCanvas(ctx context.Context, postID uuid.UUI
 		fmt.Println("Ошибка добавления холста в пост", err.Error())
 		return err
 	}
-
-	// err = s.repo.PushPostToQueue(ctx, postID)
-	// if (err != nil) {
-	// 	fmt.Println("Ошибка добавления id поста в очередь", err.Error())
-	// 	return err
-	// }
 	return nil
 }
 
