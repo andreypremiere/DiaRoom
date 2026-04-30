@@ -27,3 +27,22 @@ func InitRedisQueue() *redis.Client {
 
 	return rdb
 }
+
+func InitRedisStats() *redis.Client {
+	addr := fmt.Sprintf("%s:%s",
+		os.Getenv("REDIS_QUEUE_HOST"),
+		os.Getenv("REDIS_QUEUE_POST"),
+	)
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     addr,
+		Password: "", 
+		DB:       1,  
+	})
+
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		panic(fmt.Sprintf("Не удалось подключиться к Redis Queue: %v", err))
+	}
+
+	return rdb
+}

@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS rooms (
 
 -- Таблица категорий
 CREATE TABLE IF NOT EXISTS categories (
-    slug VARCHAR(50) PRIMARY KEY, -- Теперь это PK
-    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(100) PRIMARY KEY, -- Теперь это PK
+    name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email));
 CREATE INDEX IF NOT EXISTS idx_users_active ON users (is_activated) WHERE is_activated = TRUE;
 CREATE INDEX IF NOT EXISTS idx_rooms_unique_id_lower ON rooms (LOWER(room_unique_id));
-CREATE INDEX IF NOT EXISTS idx_room_categories_cat_id ON room_categories(category_id);
+CREATE INDEX IF NOT EXISTS idx_room_categories_cat_id ON room_categories(category_slug);
 
 --- НАПОЛНЕНИЕ ---
 INSERT INTO categories (slug, name)
@@ -84,3 +84,44 @@ VALUES
     ('craft-diy', 'Крафт и DIY')
 ON CONFLICT (slug)
 DO UPDATE SET name = EXCLUDED.name;
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    -- Кто подписывается
+    follower_id UUID NOT NULL,
+    -- На кого подписываются
+    following_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    -- нельзя подписаться дважды
+    PRIMARY KEY (follower_id, following_id),
+
+    -- нельзя подписаться на самого себя
+    CONSTRAINT check_self_follow CHECK (follower_id <> following_id),
+
+    -- Внешние ключи
+    CONSTRAINT fk_follower 
+        FOREIGN KEY (follower_id) REFERENCES rooms(id) ON DELETE CASCADE,
+    CONSTRAINT fk_following 
+        FOREIGN KEY (following_id) REFERENCES rooms(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_subscriptions_following_id ON subscriptions(following_id);
+
+-- Триггер на обновление счетчиков при подписке/отписке
+CREATE OR REPLACE FUNCTION update_follow_counts()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE rooms SET following_count = following_count + 1 WHERE id = NEW.follower_id;
+        UPDATE rooms SET followers_count = followers_count + 1 WHERE id = NEW.following_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE rooms SET following_count = following_count - 1 WHERE id = OLD.follower_id;
+        UPDATE rooms SET followers_count = followers_count - 1 WHERE id = OLD.following_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_follow_counts
+AFTER INSERT OR DELETE ON subscriptions
+FOR EACH ROW EXECUTE FUNCTION update_follow_counts();

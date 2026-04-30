@@ -141,15 +141,23 @@ func main() {
 		"/post/getPresignedUrls",
 		"/post/createPost",
 		"/post/publishPost",
-		"/post/[a-zA-Z0-9-]+/canvas",
-	})
-
-	gateway.AddRoute("/rooms", "http://room-microservice:81", []string{
-		"/rooms/getRoomByRoomId",
+		"/post/saveCanvas/[a-zA-Z0-9-]+",
+		"/post/getPersonalPosts",
+		"/post/view/[a-zA-Z0-9-]+",
+		"/post/like/[a-zA-Z0-9-]+",
+		"/post/isLiked/[a-zA-Z0-9-]+",
+		"/post/likers/[a-zA-Z0-9-]+",
+		"/post/deletePost/[a-zA-Z0-9-]+",
 	})
 
 	gateway.AddRoute("/account", "http://account-microservice:81", []string{
 		"/account/updateRoom", "/account/room/[a-zA-Z0-9-]+",
+		"/account/checkRoomSubscription/[a-zA-Z0-9-]+",
+		"/account/unfollowRoom",
+		"/account/followRoom",
+		"/account/followers/[a-zA-Z0-9-]+",
+		"/account/following/[a-zA-Z0-9-]+",
+		"/account/setConfigured",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

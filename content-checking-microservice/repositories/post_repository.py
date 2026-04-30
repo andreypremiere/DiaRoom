@@ -34,11 +34,12 @@ class PostRepository:
 
         data_to_update = [
             {
-                "status": "warning" if res["is_flagged"] else "passed",
+                "status": "failed" if res["is_flagged"] else "passed",
                 "post_status": "rejected" if res["is_flagged"] else "published",
                 "now": now,
                 "reason": res["verdict"] if res["is_flagged"] else None,
                 "post_id": res["post_id"],
+                "published_at": None if res["is_flagged"] else now
             }
             for res in results
         ]
@@ -51,8 +52,9 @@ class PostRepository:
                         ai_check_at = :now,
                         status = :post_status,
                         ai_check_reason = :reason,
-                        updated_at = :now
-                    WHERE id = :post_id AND is_deleted = FALSE
+                        updated_at = :now,
+                        published_at = :published_at
+                    WHERE id = :post_id
                 """)
                 await conn.execute(query, data_to_update)
             print(f"БД обновлена: {len(results)} постов.")

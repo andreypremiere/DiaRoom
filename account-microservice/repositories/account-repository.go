@@ -21,6 +21,132 @@ type AccountRepository struct {
 	redisClient *redis.Client
 }
 
+func (r *AccountRepository) GetFollowers(ctx context.Context, roomId uuid.UUID, limit, offset int) ([]responses.RoomInfo, error) {
+	query := `
+		SELECT 
+		r.id, 
+		r.room_name, 
+		r.avatar_url
+		FROM subscriptions s
+		JOIN rooms r ON s.follower_id = r.id
+		WHERE s.following_id = $1
+		ORDER BY s.created_at DESC
+		LIMIT $2 OFFSET $3;
+	`
+
+	rows, err := r.poolPg.Query(ctx, query, roomId, limit, offset)
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	authors := make([]responses.RoomInfo, 0, limit)
+
+    for rows.Next() {
+        var a responses.RoomInfo
+        
+        err := rows.Scan(
+            &a.Id,  
+            &a.RoomName,
+            &a.AvatarUrl,  
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        
+        authors = append(authors, a)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return authors, nil
+}
+
+func (r *AccountRepository) GetFollowing(ctx context.Context, roomId uuid.UUID, limit, offset int) ([]responses.RoomInfo, error) {
+    query := `
+        SELECT 
+            r.id, 
+            r.room_name, 
+            r.avatar_url
+        FROM subscriptions s
+        JOIN rooms r ON s.following_id = r.id
+        WHERE s.follower_id = $1
+        ORDER BY s.created_at DESC
+        LIMIT $2 OFFSET $3;
+    `
+
+    rows, err := r.poolPg.Query(ctx, query, roomId, limit, offset)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    rooms := make([]responses.RoomInfo, 0, limit)
+
+    for rows.Next() {
+        var rm responses.RoomInfo
+        
+        err := rows.Scan(
+            &rm.Id,  
+            &rm.RoomName,
+            &rm.AvatarUrl,  
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        
+        rooms = append(rooms, rm)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return rooms, nil
+}
+
+func (r *AccountRepository) CheckSubscription(ctx context.Context, followerId, followingId uuid.UUID) (bool, error) {
+	var exists bool
+	query := `
+		SELECT EXISTS (
+			SELECT 1 
+			FROM subscriptions 
+			WHERE follower_id = $1 AND following_id = $2
+		);`
+
+	err := r.poolPg.QueryRow(ctx, query, followerId, followingId).Scan(&exists)
+	if err != nil {
+		return false, r.parseError(err)
+	}
+	return exists, nil
+}
+
+func (r *AccountRepository) AddSubscription(ctx context.Context, followerId, followingId uuid.UUID) error {
+	query := `
+		INSERT INTO subscriptions (follower_id, following_id) 
+		VALUES ($1, $2) 
+		ON CONFLICT (follower_id, following_id) DO NOTHING;`
+	_, err := r.poolPg.Exec(ctx, query, followerId, followingId)
+	if err != nil {
+		return r.parseError(err)
+	}
+	return nil
+}
+
+func (r *AccountRepository) RemoveSubscription(ctx context.Context, followerId, followingId uuid.UUID) error {
+	query := `
+		DELETE FROM subscriptions 
+		WHERE follower_id = $1 AND following_id = $2;`
+
+	_, err := r.poolPg.Exec(ctx, query, followerId, followingId)
+	if err != nil {
+		return r.parseError(err)
+	}
+	return nil
+}
+
 func (ar AccountRepository) GetRoomInfo(context context.Context, id uuid.UUID) (*responses.RoomInfo, error) {
 	query := `
 		SELECT avatar_url, room_name 
@@ -41,6 +167,21 @@ func (ar AccountRepository) GetRoomInfo(context context.Context, id uuid.UUID) (
 	}
 
 	return &info, nil
+}
+
+func (r *AccountRepository) SetConfigured(ctx context.Context, userID uuid.UUID) error {
+    query := `UPDATE users SET is_configured = true WHERE id = $1`
+    
+    result, err := r.poolPg.Exec(ctx, query, userID)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound
+    }
+
+    return nil
 }
 
 func (ar AccountRepository) UpdateRoom(ctx context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) error {
@@ -121,7 +262,9 @@ func (ar AccountRepository) GetRoom(context context.Context, roomId uuid.UUID) (
                  FROM room_categories 
                  WHERE room_id = rooms.id), 
                 '{}'
-            )
+            ),
+			followers_count,
+			following_count
         FROM rooms 
         WHERE id = $1`
 
@@ -132,6 +275,8 @@ func (ar AccountRepository) GetRoom(context context.Context, roomId uuid.UUID) (
 		&room.AvatarPath,
 		&room.BackgroundPath,
 		&room.ListCategory,
+		&room.CountFollowers,
+		&room.CountFollowing,
 	)
 
 	if err != nil {

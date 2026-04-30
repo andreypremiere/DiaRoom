@@ -23,6 +23,58 @@ type AccountService struct {
 	s3Manager     *S3Manager
 }
 
+func (as *AccountService) GetRoomFollowers(ctx context.Context, roomId uuid.UUID, page int, limit int) ([]responses.RoomInfo, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+
+	offset := (page - 1) * limit
+
+	authors, err := as.accountRepo.GetFollowers(ctx, roomId, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	if authors == nil {
+		return []responses.RoomInfo{}, nil
+	}
+
+	for id, room := range authors {
+		authors[id].AvatarUrl = as.s3Manager.FormatFullURL(room.AvatarUrl)
+	}
+
+	return authors, nil
+}
+
+func (as *AccountService) GetRoomFollowing(ctx context.Context, roomId uuid.UUID, page int, limit int) ([]responses.RoomInfo, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+
+	offset := (page - 1) * limit
+
+	authors, err := as.accountRepo.GetFollowing(ctx, roomId, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	if authors == nil {
+		return []responses.RoomInfo{}, nil
+	}
+
+	for id, room := range authors {
+		authors[id].AvatarUrl = as.s3Manager.FormatFullURL(room.AvatarUrl)
+	}
+
+	return authors, nil
+}
+
 func (as *AccountService) GetRoomInfo(context context.Context, id uuid.UUID) (*responses.RoomInfo, error) {
 	room, err := as.accountRepo.GetRoomInfo(context, id)
 	if err != nil {
@@ -32,6 +84,41 @@ func (as *AccountService) GetRoomInfo(context context.Context, id uuid.UUID) (*r
 	room.AvatarUrl = as.s3Manager.FormatFullURL(room.AvatarUrl)
 
 	return room, nil
+}
+
+func (s *AccountService) CheckSubscription(ctx context.Context, followerId, followingId uuid.UUID) (bool, error) {
+    isFollowed, err := s.accountRepo.CheckSubscription(ctx, followerId, followingId)
+    if err != nil {
+        return false, err
+    }
+    return isFollowed, nil
+}
+
+func (s *AccountService) Follow(ctx context.Context, followerId, followingId uuid.UUID) error {
+
+    err := s.accountRepo.AddSubscription(ctx, followerId, followingId)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (s *AccountService) Unfollow(ctx context.Context, followerId, followingId uuid.UUID) error {
+    err := s.accountRepo.RemoveSubscription(ctx, followerId, followingId)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (s *AccountService) SetConfigured(ctx context.Context, userID uuid.UUID) error {
+    
+    err := s.accountRepo.SetConfigured(ctx, userID)
+    if err != nil {
+        return err
+    }
+    
+    return nil
 }
 
 func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) (*responses.UpdateRoomResponse, error) {

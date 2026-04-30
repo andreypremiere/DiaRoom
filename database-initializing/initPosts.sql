@@ -2,20 +2,17 @@
 -- 1. ENUM'ы (статусы)
 -- =============================================
 CREATE TYPE post_status AS ENUM (
-    'draft',        -- черновик
-    'pending',      -- отправлен на публикацию
     'processing',   -- идёт загрузка файлов / генерация
+	'checking',
     'published',    -- успешно опубликован
     'hidden',       -- скрыт
     'rejected',     -- отклонён
-    'deleted'       -- мягкое удаление
+	'failed'
 );
 
 CREATE TYPE ai_check_status AS ENUM (
     'notChecked',
-    'checking',
     'passed',
-    'warning',
     'failed'
 );
 
@@ -23,9 +20,8 @@ CREATE TYPE ai_check_status AS ENUM (
 -- 2. Справочник категорий
 -- =============================================
 CREATE TABLE IF NOT EXISTS categories (
-    id SERIAL PRIMARY KEY,
-    slug VARCHAR(50) NOT NULL UNIQUE,
-    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -35,7 +31,6 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS canvases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     payload JSONB NOT NULL DEFAULT '{}',
-    version INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -46,17 +41,17 @@ CREATE TABLE IF NOT EXISTS canvases (
 CREATE TABLE IF NOT EXISTS posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
-    room_id UUID NOT NULL,                    -- автор (комната = пользователь)
-    category_id INTEGER NOT NULL,
+    room_id UUID NOT NULL,                   
+    category_slug VARCHAR(100) NOT NULL,
 	canvas_id UUID UNIQUE,
 
     -- === Статусы ===
-    status post_status NOT NULL DEFAULT 'processing',
-    ai_check_status ai_check_status NOT NULL DEFAULT 'notChecked',
+    status post_status NOT NULL ,
+    ai_check_status ai_check_status NOT NULL,
     
     -- === Дополнительная информация ===
-    title VARCHAR(160),
-    preview_url TEXT,
+    title VARCHAR(160) NOT NULL,
+    preview_url TEXT DEFAULT '',
     metadata JSONB NOT NULL DEFAULT '{}',
     
     -- === Даты и статистика ===
@@ -65,8 +60,6 @@ CREATE TABLE IF NOT EXISTS posts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
     -- === Модерация и удаление ===
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    moderation_reason TEXT,
     ai_check_at TIMESTAMP WITH TIME ZONE,
     ai_check_reason TEXT,
 
@@ -77,7 +70,7 @@ CREATE TABLE IF NOT EXISTS posts (
 
     -- CONSTRAINT fk_post_room     FOREIGN KEY (room_id)     REFERENCES rooms(id) ON DELETE CASCADE,
     CONSTRAINT fk_post_canvas   FOREIGN KEY (canvas_id)   REFERENCES canvases(id) ON DELETE CASCADE,
-    CONSTRAINT fk_post_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
+    CONSTRAINT fk_post_category FOREIGN KEY (category_slug) REFERENCES categories(slug) ON DELETE RESTRICT
 );
 
 -- =============================================
@@ -87,8 +80,7 @@ CREATE INDEX idx_posts_room_id      ON posts(room_id);
 CREATE INDEX idx_posts_status       ON posts(status);
 CREATE INDEX idx_posts_ai_status    ON posts(ai_check_status);
 CREATE INDEX idx_posts_published_at ON posts(published_at DESC);
-CREATE INDEX idx_posts_category_id  ON posts(category_id);
-CREATE INDEX idx_posts_is_deleted   ON posts(is_deleted);
+CREATE INDEX idx_posts_category ON posts(category_slug);
 
 -- =============================================
 -- 6. Хештеги
@@ -133,3 +125,32 @@ VALUES
     ('lifestyle-blog', 'Жизнь и Блог')
 ON CONFLICT (slug) 
 DO UPDATE SET name = EXCLUDED.name;
+
+-- Таблица лайков
+CREATE TABLE post_likes (
+    post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    room_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (post_id, room_id)
+);
+
+-- Индекс для быстрого получения всех лайкнувших конкретный пост
+CREATE INDEX idx_post_likes_post_id ON post_likes(post_id);
+
+-- Функция триггера для обновления счетчика в таблице posts
+CREATE OR REPLACE FUNCTION fn_update_post_likes_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE posts SET likes_count = likes_count + 1 WHERE id = NEW.post_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE posts SET likes_count = likes_count - 1 WHERE id = OLD.post_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Сам триггер
+CREATE TRIGGER tr_post_likes_count
+AFTER INSERT OR DELETE ON post_likes
+FOR EACH ROW EXECUTE FUNCTION fn_update_post_likes_count();

@@ -36,3 +36,15 @@ type ShowingPost struct {
 	ViewsCount int `json:"viewsCount"`
 	LikesCount int `json:"likesCount"`
 }
+
+type PostInfoPersonal struct {
+	PostInfo
+	Status string `json:"status"`
+	StatusAi string `json:"statusAi"`
+}
+
+type Room struct {
+	Id  uuid.UUID `json:"roomId"`
+	AvatarUrl string `json:"avatarUrl"`
+	RoomName  string `json:"roomName"`
+}

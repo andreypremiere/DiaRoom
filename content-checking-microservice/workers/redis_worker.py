@@ -31,7 +31,7 @@ async def redis_worker(
                     full_text = " ".join(
                         block.get("text", "").strip()
                         for block in payload
-                        if block.get("type") == "text"
+                        if block.get("blockType") == "text"
                     )
                     cache_list.append({"post_id": post_id, "full_text": full_text})
 

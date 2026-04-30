@@ -10,7 +10,7 @@ class Settings:
     QUEUE_NAME: str = "new_posts:post_id"
 
     BATCH_TIMEOUT: float = 0.2
-    MAX_BATCH_SIZE: int = 32
+    MAX_BATCH_SIZE: int = 16
 
     LABELS: ClassVar[list[str]] = ["non-toxic", "insult", "obscenity", "threat", "dangerous"]
     TOXIC_THRESHOLD: float = 0.45
