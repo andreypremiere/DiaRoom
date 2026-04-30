@@ -2,6 +2,7 @@ postgresql-rooms/
 postgresql-users/
 postgresql-posts/
 postgresql-accounts/
+postgresql-workshop/
 
 go.sum
 .idea/

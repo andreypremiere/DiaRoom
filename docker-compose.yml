@@ -54,6 +54,18 @@ services:
     networks:
       - backend-application
 
+  workshop-microservice:
+    build: ./workshop-microservice
+    container_name: workshop-microservice
+    env_file:
+      - .env
+    ports:
+      - "8085:81"
+    volumes:
+      - ./workshop-microservice:/app
+    networks:
+      - backend-application
+
   postgresql-accounts:
     image: postgres:18.2-alpine3.23
     container_name: postgresql-accounts
@@ -79,6 +91,20 @@ services:
       - "5436:5432"
     volumes:
       - ./postgresql-posts:/var/lib/postgresql
+    networks:
+      - backend-application
+    
+  postgresql-workshop:
+    image: postgres:18.2-alpine3.23
+    container_name: postgresql-workshop
+    environment: 
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1111"
+      POSTGRES_DB: db_workshop
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./postgresql-workshop:/var/lib/postgresql
     networks:
       - backend-application
 
