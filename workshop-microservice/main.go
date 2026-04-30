@@ -56,9 +56,71 @@ func (a *App) sendError(w http.ResponseWriter, err error) {
 	})
 }
 
+func (a *App) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	folderIDStr := r.PathValue("folderId")
+	if folderIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	folderID, err := uuid.Parse(folderIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	var folder struct {
+		FolderName string `json:"folderName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&folder); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+	defer r.Body.Close()
+
+	err = a.service.RenameFolder(r.Context(), roomID, folderID, folder.FolderName)
+	if err != nil {
+		a.sendError(w, err)
+		return 
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (a *App) handleGetRoot(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	resultRoot, err := a.service.GetRoot(r.Context(), roomID)
+	if err != nil {
+		a.sendError(w, err)
+		return 
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resultRoot)
 }
 
 func (a *App) handleCreateFolder(w http.ResponseWriter, r *http.Request) {
@@ -119,6 +181,7 @@ func main() {
 
 	mux.HandleFunc("GET /getRoot", app.handleGetRoot)
 	mux.HandleFunc("POST /createFolder", app.handleCreateFolder)
+	mux.HandleFunc("PATCH /renameFolder/{folderId}", app.handleRenameFolder)
 
 	server := &http.Server{
 		Addr:    ":81",

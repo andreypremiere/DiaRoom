@@ -6,6 +6,7 @@ import (
 	apperrors "workshop-microservice/app-errors"
 	"workshop-microservice/models"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,6 +38,64 @@ func (r *WorkshopRepository) parseError(err error) error {
 	}
 
 	return apperrors.ErrInternal
+}
+
+func (r *WorkshopRepository) RenameFolder(ctx context.Context, folderID, roomID uuid.UUID, newName string) error {
+    query := `
+        UPDATE folders 
+        SET name = $1, updated_at = NOW() 
+        WHERE id = $2 AND room_id = $3
+    `
+
+    result, err := r.db.Exec(ctx, query, newName, folderID, roomID)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound 
+    }
+
+    return nil
+}
+
+func (r *WorkshopRepository) GetRootFolders(ctx context.Context, roomId uuid.UUID) ([]*models.Folder, error) {
+	query := `
+        SELECT id, room_id, parent_id, name, created_at, updated_at 
+        FROM folders 
+        WHERE room_id = $1 AND parent_id IS NULL
+        ORDER BY created_at ASC;
+    `
+
+    rows, err := r.db.Query(ctx, query, roomId)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    folders := make([]*models.Folder, 0)
+
+    for rows.Next() {
+        var f models.Folder
+        err := rows.Scan(
+            &f.ID, 
+            &f.RoomID, 
+            &f.ParentID, 
+            &f.Name, 
+            &f.CreatedAt, 
+            &f.UpdatedAt,
+        )
+        if err != nil {
+            return nil, err
+        }
+        folders = append(folders, &f)
+    }
+
+    if err := rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return folders, nil
 }
 
 func (r *WorkshopRepository) CreateFolder(ctx context.Context, folder *models.Folder) (*models.Folder, error) {
