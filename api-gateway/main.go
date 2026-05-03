@@ -151,13 +151,22 @@ func main() {
 	})
 
 	gateway.AddRoute("/account", "http://account-microservice:81", []string{
-		"/account/updateRoom", "/account/room/[a-zA-Z0-9-]+",
+		"/account/updateRoom", 
+		"/account/room/[a-zA-Z0-9-]+",
 		"/account/checkRoomSubscription/[a-zA-Z0-9-]+",
 		"/account/unfollowRoom",
 		"/account/followRoom",
 		"/account/followers/[a-zA-Z0-9-]+",
 		"/account/following/[a-zA-Z0-9-]+",
 		"/account/setConfigured",
+	})
+
+	gateway.AddRoute("/workshop", "http://workshop-microservice:81", []string{
+		"/workshop/getRoot/[a-zA-Z0-9-]+", 
+		"/workshop/createFolder",
+		"/workshop/renameFolder/[a-zA-Z0-9-]+",
+		"/workshop/moveFolder",
+		"/workshop/getFolder/[a-zA-Z0-9-]+",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))
