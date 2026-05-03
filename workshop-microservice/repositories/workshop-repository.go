@@ -40,6 +40,70 @@ func (r *WorkshopRepository) parseError(err error) error {
 	return apperrors.ErrInternal
 }
 
+func (r *WorkshopRepository) MoveFolder(ctx context.Context, roomID uuid.UUID, folderID uuid.UUID, newParentID uuid.UUID) error {
+    // Проверяем, что перемещаемая папка существует и принадлежит комнате
+    var exists bool
+    err := r.db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM folders WHERE id = $1 AND room_id = $2)", folderID, roomID).Scan(&exists)
+    if err != nil {
+        return r.parseError(err)
+    }
+    if !exists {
+        return apperrors.ErrNotFound
+    }
+
+    //Если целевой родитель указан, проверяем и его
+    err = r.db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM folders WHERE id = $1 AND room_id = $2)", newParentID, roomID).Scan(&exists)
+    if err != nil {
+        return r.parseError(err)
+    }
+    if !exists {
+        return apperrors.ErrNotFound
+    }
+
+    // Проверка: нельзя переместить папку в саму себя
+    if newParentID == folderID {
+        return apperrors.ErrInvalidInput
+    }
+
+    // 3. Проверка на бесконечный цикл (рекурсивный поиск)
+    // Ищем, является ли newParentID потомком folderID
+    queryCycle := `
+        WITH RECURSIVE descendants AS (
+            SELECT id FROM folders WHERE id = $1
+            UNION ALL
+            SELECT f.id FROM folders f
+            JOIN descendants d ON f.parent_id = d.id
+        )
+        SELECT EXISTS(SELECT 1 FROM descendants WHERE id = $2);
+    `
+    var isCycle bool
+    err = r.db.QueryRow(ctx, queryCycle, folderID, newParentID).Scan(&isCycle)
+    if err != nil {
+        return r.parseError(err)
+    }
+    if isCycle {
+        return apperrors.ErrInvalidInput // Попытка создать цикл
+    }
+    
+
+    // Выполняем перемещение
+    queryUpdate := `
+        UPDATE folders 
+        SET parent_id = $1, updated_at = NOW() 
+        WHERE id = $2 AND room_id = $3
+    `
+    result, err := r.db.Exec(ctx, queryUpdate, newParentID, folderID, roomID)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound
+    }
+
+    return nil
+}
+
 func (r *WorkshopRepository) RenameFolder(ctx context.Context, folderID, roomID uuid.UUID, newName string) error {
     query := `
         UPDATE folders 
@@ -125,6 +189,32 @@ func (r *WorkshopRepository) CreateFolder(ctx context.Context, folder *models.Fo
     }
 
     return &createdFolder, nil
+}
+
+func (r *WorkshopRepository) GetFolder(ctx context.Context, folderID uuid.UUID) ([]*models.Folder, error) {
+    query := `
+        SELECT id, room_id, parent_id, name, created_at, updated_at 
+        FROM folders 
+        WHERE parent_id = $1
+        ORDER BY name ASC;
+    `
+
+    rows, err := r.db.Query(ctx, query, folderID)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    var folders []*models.Folder
+    for rows.Next() {
+        var f models.Folder
+        if err := rows.Scan(&f.ID, &f.RoomID, &f.ParentID, &f.Name, &f.CreatedAt, &f.UpdatedAt); err != nil {
+            return nil, r.parseError(err)
+        }
+        folders = append(folders, &f)
+    }
+
+    return folders, rows.Err()
 }
 
 func NewWorkshopRepository(db *pgxpool.Pool) *WorkshopRepository {

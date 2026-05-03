@@ -19,3 +19,8 @@ func (req CreateFolder) ToDomain() *models.Folder {
         Name:     req.FolderName,
     }
 }
+
+type MoveFolder struct {
+	TargetId uuid.UUID `json:"targetId"`
+	DestinationId uuid.UUID `json:"destinationId"`
+}

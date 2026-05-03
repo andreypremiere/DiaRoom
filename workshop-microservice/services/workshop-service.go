@@ -16,6 +16,29 @@ type WorkshopService struct {
 	s3Client *s3.Client
 }
 
+func (s *WorkshopService) GetFolder(ctx context.Context, folderID uuid.UUID) (*responses.Root, error) {
+    folders, err := s.repo.GetFolder(ctx, folderID)
+    if err != nil {
+        return nil, err
+    }
+
+    result := &responses.Root{
+        Folders: make([]*responses.FolderShow, 0, len(folders)),
+    }
+
+    for _, f := range folders {
+        show := &responses.FolderShow{}
+        result.Folders = append(result.Folders, show.FromModel(f))
+    }
+
+    return result, nil
+}
+
+func (s *WorkshopService) MoveFolder(ctx context.Context, roomID uuid.UUID, moving *requests.MoveFolder) error {
+    // Делегируем проверку и обновление репозиторию
+    return s.repo.MoveFolder(ctx, roomID, moving.TargetId, moving.DestinationId)
+}
+
 func (s *WorkshopService) RenameFolder(ctx context.Context, roomID, folderID uuid.UUID, newName string) error {
 	if newName == "" {
 		return apperrors.ErrInvalidInput
@@ -33,7 +56,7 @@ func (s *WorkshopService) GetRoot(ctx context.Context, roomId uuid.UUID) (*respo
 	resultFolders := make([]*responses.FolderShow, 0)
 	if len(folders) != 0 {
 		for _, item := range folders {
-			var f responses.FolderShow
+			f := &responses.FolderShow{}
 			resultFolders = append(resultFolders, f.FromModel(item))
 		}
 	}
