@@ -22,3 +22,7 @@ func (f *FolderShow) FromModel(folder *models.Folder) *FolderShow {
 	f.Name = folder.Name
 	return f
 }
+
+type Folders struct {
+	Folders []*FolderShow `json:"folders"`
+}

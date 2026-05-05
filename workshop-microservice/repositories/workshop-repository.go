@@ -40,6 +40,45 @@ func (r *WorkshopRepository) parseError(err error) error {
 	return apperrors.ErrInternal
 }
 
+func (r *WorkshopRepository) CreateItem(ctx context.Context, item *models.Item) error {
+	query := `
+		INSERT INTO items (
+			id, room_id, folder_id, title, preview_url, 
+			size_bytes, item_type, mime_type, status, payload
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+
+	_, err := r.db.Exec(ctx, query,
+		item.ID,
+		item.RoomID,
+		item.FolderID,
+		item.Title,
+		item.PreviewURL,
+		item.SizeBytes,
+		item.ItemType,
+		item.MimeType,
+		item.Status,
+		item.Payload,
+	)
+
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	return nil
+}
+
+func (r *WorkshopRepository) IsFolderInRoom(ctx context.Context, folderID uuid.UUID, roomID uuid.UUID) (bool, error) {
+    var exists bool
+    query := `SELECT EXISTS(SELECT 1 FROM folders WHERE id = $1 AND room_id = $2)`
+    
+    err := r.db.QueryRow(ctx, query, folderID, roomID).Scan(&exists)
+    if err != nil {
+        return false, apperrors.ErrNotFound
+    }
+    return exists, nil
+}
+
 func (r *WorkshopRepository) MoveFolder(ctx context.Context, roomID uuid.UUID, folderID uuid.UUID, newParentID *uuid.UUID) error {
 
 	var exists bool
@@ -244,7 +283,7 @@ func (r *WorkshopRepository) CreateFolder(ctx context.Context, folder *models.Fo
     return &createdFolder, nil
 }
 
-func (r *WorkshopRepository) GetFolder(ctx context.Context, folderID uuid.UUID) ([]*models.Folder, error) {
+func (r *WorkshopRepository) GetFolders(ctx context.Context, folderID uuid.UUID) ([]*models.Folder, error) {
     query := `
         SELECT id, room_id, parent_id, name, created_at, updated_at 
         FROM folders 
@@ -268,6 +307,25 @@ func (r *WorkshopRepository) GetFolder(ctx context.Context, folderID uuid.UUID) 
     }
 
     return folders, rows.Err()
+}
+
+func (r *WorkshopRepository) UpdateItemStatus(ctx context.Context, roomId uuid.UUID, itemId uuid.UUID, status string) error {
+	query := `
+		UPDATE items 
+		SET status = $1, updated_at = NOW() 
+		WHERE id = $2 AND room_id = $3
+	`
+
+	result, err := r.db.Exec(ctx, query, status, itemId, roomId)
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return r.parseError(err)
+	}
+
+	return nil
 }
 
 func NewWorkshopRepository(db *pgxpool.Pool) *WorkshopRepository {

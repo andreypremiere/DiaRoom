@@ -162,11 +162,15 @@ func main() {
 	})
 
 	gateway.AddRoute("/workshop", "http://workshop-microservice:81", []string{
-		"/workshop/getRoot/[a-zA-Z0-9-]+", 
+		"/workshop/folders/[a-zA-Z0-9-]+", 
 		"/workshop/createFolder",
 		"/workshop/renameFolder/[a-zA-Z0-9-]+",
 		"/workshop/moveFolder",
-		"/workshop/getFolder/[a-zA-Z0-9-]+",
+		"/workshop/folders/[a-zA-Z0-9-]+/[a-zA-Z0-9-]+",
+		"/workshop/[a-zA-Z0-9-]+",
+		"/workshop/[a-zA-Z0-9-]+/[a-zA-Z0-9-]+",
+		"/workshop/createImage",
+		"/workshop/updateItemStatus",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

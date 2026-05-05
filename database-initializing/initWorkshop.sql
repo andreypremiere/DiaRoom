@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX idx_items_room_id ON items(room_id);
 CREATE INDEX idx_items_folder_id ON items(folder_id);
 
+ALTER TABLE items 
+ADD COLUMN mime_type VARCHAR(100) NOT NULL;
+
 -- 5. Таблица статистики (квоты)
 CREATE TABLE IF NOT EXISTS room_storage_stats (
     room_id UUID PRIMARY KEY,

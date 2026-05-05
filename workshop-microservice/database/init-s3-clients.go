@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func NewS3Client() (*s3.Client, error) {
+func NewS3Client() (*s3.Client, *s3.PresignClient, error) {
 	accessKey := os.Getenv("S3_ACCESS_KEY_WORKSHOP_MANAGER")
 	secretKey := os.Getenv("S3_SECRET_KEY_WORKSHOP_MANAGER")
 
@@ -23,12 +23,14 @@ func NewS3Client() (*s3.Client, error) {
 		)),
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String("https://storage.yandexcloud.net")
 	})
 
-	return client, nil
+	presignedClient := s3.NewPresignClient(client)
+
+	return client, presignedClient, nil
 }
