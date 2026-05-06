@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type Item struct {
+type ItemData struct {
 	ID     uuid.UUID `json:"id"`
 	RoomID uuid.UUID `json:"roomId"`
 
@@ -21,10 +21,14 @@ type Item struct {
 	Status     string `json:"status"`      // uploading, ready, failed
 	MimeType   string `json:"mimetype"`
 
-	Payload json.RawMessage `json:"payload"`
-
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type Item struct {
+	ItemData ItemData
+
+	Payload json.RawMessage `json:"payload"`
 }
 
 type ImagePayload struct {
@@ -35,11 +39,11 @@ type ImagePayload struct {
 
 type VideoPayload struct {
 	PublicURL string `json:"publicUrl"`
-	Duration  int    `json:"duration"`
+	Duration  int64    `json:"duration"`
 }
 
 func ParseItemPayload(item Item) (interface{}, error) {
-	switch item.ItemType {
+	switch item.ItemData.ItemType {
 	case "photo":
 		var p ImagePayload
 		if err := json.Unmarshal(item.Payload, &p); err != nil {
@@ -53,6 +57,6 @@ func ParseItemPayload(item Item) (interface{}, error) {
 		}
 		return p, nil
 	default:
-		return nil, fmt.Errorf("неизвестный тип: %s", item.ItemType)
+		return nil, fmt.Errorf("неизвестный тип: %s", item.ItemData.ItemType)
 	}
 }

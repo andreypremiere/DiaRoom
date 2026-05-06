@@ -91,8 +91,10 @@ func (s *WorkshopService) CreateImageItem(ctx context.Context, roomId uuid.UUID,
 
 	ext := s.getExtensionFromMime(item.MimeType)
 
-	keyPreview := fmt.Sprintf("%s/%s.%s", roomId, uuid.New(), ext)
-	keyOriginal := fmt.Sprintf("%s/%s.%s", roomId, uuid.New(), ext)
+	itemId := uuid.New()
+
+	keyPreview := fmt.Sprintf("%s/%s/%s.%s", roomId, itemId, uuid.New(), ext)
+	keyOriginal := fmt.Sprintf("%s/%s/%s.%s", roomId, itemId, uuid.New(), ext)
 
 	publicUrlPreview, presignedUrlPreview, err := s.GenerateUploadUrls(ctx, keyPreview, item.MimeType)
 	if err != nil {
@@ -110,8 +112,7 @@ func (s *WorkshopService) CreateImageItem(ctx context.Context, roomId uuid.UUID,
         return nil, apperrors.ErrInternal
     }
 
-	itemId := uuid.New()
-	NewItem := &models.Item{
+	NewItem := &models.Item{ItemData: models.ItemData{
 		ID: itemId,
 		RoomID: roomId,
 		FolderID: item.FolderID,
@@ -121,6 +122,7 @@ func (s *WorkshopService) CreateImageItem(ctx context.Context, roomId uuid.UUID,
 		ItemType: item.ItemType,
 		MimeType: item.MimeType,
 		Status: "uploading",
+	},
 		Payload: payloadJson,
 	}
 
@@ -130,6 +132,63 @@ func (s *WorkshopService) CreateImageItem(ctx context.Context, roomId uuid.UUID,
 	}
 
 	response := &responses.CreatingItemPhoto{ItemId: itemId,PresignedUrlPreview: presignedUrlPreview, PresignedUrlOriginal: presignedUrlOriginal}
+
+	return response, nil
+}
+
+func (s *WorkshopService) CreateVideoItem(ctx context.Context, roomId uuid.UUID, item *requests.CreatingItemVideo) (*responses.CreatingItemVideo, error) {
+	if item.FolderID != nil {
+		inRoom, err := s.ValidateFolderAccess(ctx, *item.FolderID, roomId)
+		if err != nil {
+			return nil, err
+		}
+		if !inRoom {
+			return nil, apperrors.ErrNotFound
+		}
+	}
+
+	ext := s.getExtensionFromMime(item.MimeType)
+
+	itemId := uuid.New()
+	keyPreview := fmt.Sprintf("%s/%s/%s.%s", roomId, itemId, uuid.New(), "jpeg")
+	keyOriginal := fmt.Sprintf("%s/%s/%s.%s", roomId, itemId, uuid.New(), ext)
+
+	publicUrlPreview, presignedUrlPreview, err := s.GenerateUploadUrls(ctx, keyPreview, "image/jpeg")
+	if err != nil {
+		return nil, apperrors.ErrInternal
+	}
+
+	publicUrlOriginal, presignedUrlOriginal, err := s.GenerateUploadUrls(ctx, keyOriginal, item.MimeType)
+	if err != nil {
+		return nil, apperrors.ErrInternal
+	}
+
+	payload := models.VideoPayload{PublicURL: s.getRelativePath(publicUrlOriginal), Duration: item.Duration}
+	payloadJson, err := json.Marshal(payload)
+    if err != nil {
+        return nil, apperrors.ErrInternal
+    }
+
+	NewItem := &models.Item{ItemData: models.ItemData{
+		ID: itemId,
+		RoomID: roomId,
+		FolderID: item.FolderID,
+		Title: item.Title,
+		PreviewURL: s.getRelativePath(publicUrlPreview),
+		SizeBytes: item.SizeBytes,
+		ItemType: item.ItemType,
+		MimeType: item.MimeType,
+		Status: "uploading",
+	},
+		Payload: payloadJson,
+	}
+
+	err = s.repo.CreateItem(ctx, NewItem)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &responses.CreatingItemVideo{ItemId: itemId,PresignedUrlPreview: presignedUrlPreview, PresignedUrlOriginal: presignedUrlOriginal}
 
 	return response, nil
 }

@@ -49,15 +49,15 @@ func (r *WorkshopRepository) CreateItem(ctx context.Context, item *models.Item) 
 	`
 
 	_, err := r.db.Exec(ctx, query,
-		item.ID,
-		item.RoomID,
-		item.FolderID,
-		item.Title,
-		item.PreviewURL,
-		item.SizeBytes,
-		item.ItemType,
-		item.MimeType,
-		item.Status,
+		item.ItemData.ID,
+		item.ItemData.RoomID,
+		item.ItemData.FolderID,
+		item.ItemData.Title,
+		item.ItemData.PreviewURL,
+		item.ItemData.SizeBytes,
+		item.ItemData.ItemType,
+		item.ItemData.MimeType,
+		item.ItemData.Status,
 		item.Payload,
 	)
 

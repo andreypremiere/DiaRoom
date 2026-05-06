@@ -171,6 +171,7 @@ func main() {
 		"/workshop/[a-zA-Z0-9-]+/[a-zA-Z0-9-]+",
 		"/workshop/createImage",
 		"/workshop/updateItemStatus",
+		"/workshop/createVideo",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

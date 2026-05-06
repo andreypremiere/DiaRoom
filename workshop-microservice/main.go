@@ -89,6 +89,37 @@ func (a *App) handleCreateImageItem(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (a *App) handleCreateVideoItem(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	var item requests.CreatingItemVideo
+	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+	defer r.Body.Close()
+
+	response, err := a.service.CreateVideoItem(r.Context(), roomID, &item)
+	if err != nil {
+		a.sendError(w, err)
+		return 
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
 func (a *App) handleGetContentRoot(w http.ResponseWriter, r *http.Request) {
 	roomIDStr := r.Header.Get("X-Room-ID")
 	if roomIDStr == "" {
@@ -425,7 +456,9 @@ func main() {
 	mux.HandleFunc("GET /{roomId}", app.handleGetContentRoot)
 	mux.HandleFunc("GET /{roomId}/{folderId}", app.handleGetContentFolder)
 	mux.HandleFunc("POST /createImage", app.handleCreateImageItem)
+	mux.HandleFunc("POST /createVideo", app.handleCreateVideoItem)
 	mux.HandleFunc("POST /updateItemStatus", app.handleUpdateItemStatus)
+
 
 	server := &http.Server{
 		Addr:    ":81",
