@@ -207,9 +207,23 @@ func (s *WorkshopService) GetContentRoot(ctx context.Context, roomId uuid.UUID) 
 		}
 	}
 
-	return &responses.Content{Folders: resultFolders, Items: make([]*models.Item, 0)}, nil
+	items, err := s.repo.GetItems(ctx, roomId, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resultItems := make([]*responses.ItemShow, 0)
+	if len(items) != 0 {
+		for _, item := range items {
+			i := &responses.ItemShow{}
+			resultItems = append(resultItems, i.FromModel(item))
+		}
+	}
+
+	return &responses.Content{Folders: resultFolders, Items: resultItems}, nil
 }
 
+// Запрос только папок по родителю
 func (s *WorkshopService) GetFolders(ctx context.Context, folderID uuid.UUID) ([]*responses.FolderShow, error) {
     folders, err := s.repo.GetFolders(ctx, folderID)
     if err != nil {
@@ -226,7 +240,8 @@ func (s *WorkshopService) GetFolders(ctx context.Context, folderID uuid.UUID) ([
     return result, nil
 }
 
-func (s *WorkshopService) GetContentFolder(ctx context.Context, folderID uuid.UUID) (*responses.Content, error) {
+// Запрос всего по родителю
+func (s *WorkshopService) GetContentFolder(ctx context.Context, roomId uuid.UUID, folderID uuid.UUID) (*responses.Content, error) {
     folders, err := s.repo.GetFolders(ctx, folderID)
     if err != nil {
         return nil, err
@@ -239,7 +254,20 @@ func (s *WorkshopService) GetContentFolder(ctx context.Context, folderID uuid.UU
         result = append(result, show.FromModel(f))
     }
 
-    return &responses.Content{Folders: result, Items: make([]*models.Item, 0)}, nil
+	items, err := s.repo.GetItems(ctx, roomId, &folderID)
+	if err != nil {
+		return nil, err
+	}
+
+	resultItems := make([]*responses.ItemShow, 0)
+	if len(items) != 0 {
+		for _, item := range items {
+			i := &responses.ItemShow{}
+			resultItems = append(resultItems, i.FromModel(item))
+		}
+	}
+
+    return &responses.Content{Folders: result, Items: resultItems}, nil
 }
 
 func (s *WorkshopService) MoveFolder(ctx context.Context, roomID uuid.UUID, moving *requests.MoveFolder) error {
@@ -255,6 +283,7 @@ func (s *WorkshopService) RenameFolder(ctx context.Context, roomID, folderID uui
 	return s.repo.RenameFolder(ctx, folderID, roomID, newName)
 }
 
+// Запрос только папок корня
 func (s *WorkshopService) GetRootFolders(ctx context.Context, roomId uuid.UUID) ([]*responses.FolderShow, error) {
 	folders, err := s.repo.GetRootFolders(ctx, roomId)
 	if err != nil {

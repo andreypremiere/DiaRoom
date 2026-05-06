@@ -363,7 +363,7 @@ func (a *App) handleGetContentFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = uuid.Parse(roomIDPathStr)
+	roomId, err := uuid.Parse(roomIDPathStr)
 	if err != nil {
 		a.sendError(w, apperrors.ErrInvalidInput)
 		return
@@ -381,7 +381,7 @@ func (a *App) handleGetContentFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resultFolder, err := a.service.GetContentFolder(r.Context(), folderID)
+	resultFolder, err := a.service.GetContentFolder(r.Context(), roomId, folderID)
 	if err != nil {
 		a.sendError(w, err)
 		return 

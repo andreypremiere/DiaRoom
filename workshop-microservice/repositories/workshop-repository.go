@@ -16,6 +16,54 @@ type WorkshopRepository struct {
 	db *pgxpool.Pool
 }
 
+func (r *WorkshopRepository) GetItems(ctx context.Context, roomID uuid.UUID, folderID *uuid.UUID) ([]*models.Item, error) {
+    query := `
+        SELECT 
+            id, room_id, folder_id, title, preview_url, 
+            size_bytes, item_type, status, mime_type, 
+            created_at, updated_at, payload
+        FROM items
+        WHERE room_id = $1 
+          AND (folder_id = $2 OR (folder_id IS NULL AND $2 IS NULL))
+        ORDER BY created_at DESC
+    `
+
+    rows, err := r.db.Query(ctx, query, roomID, folderID)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    var items []*models.Item
+    for rows.Next() {
+        var item models.Item
+        err := rows.Scan(
+            &item.ItemData.ID,
+            &item.ItemData.RoomID,
+            &item.ItemData.FolderID,
+            &item.ItemData.Title,
+            &item.ItemData.PreviewURL,
+            &item.ItemData.SizeBytes,
+            &item.ItemData.ItemType,
+            &item.ItemData.Status,
+            &item.ItemData.MimeType,
+            &item.ItemData.CreatedAt,
+            &item.ItemData.UpdatedAt,
+            &item.Payload, 
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        items = append(items, &item)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return items, nil
+}
+
 func (r *WorkshopRepository) parseError(err error) error {
 	if err == nil {
 		return nil
@@ -215,6 +263,7 @@ func (r *WorkshopRepository) RenameFolder(ctx context.Context, folderID, roomID 
     return nil
 }
 
+// Запрос только папок корня
 func (r *WorkshopRepository) GetRootFolders(ctx context.Context, roomId uuid.UUID) ([]*models.Folder, error) {
 	query := `
         SELECT id, room_id, parent_id, name, created_at, updated_at 
@@ -283,6 +332,7 @@ func (r *WorkshopRepository) CreateFolder(ctx context.Context, folder *models.Fo
     return &createdFolder, nil
 }
 
+// Запрос только папок по родителю
 func (r *WorkshopRepository) GetFolders(ctx context.Context, folderID uuid.UUID) ([]*models.Folder, error) {
     query := `
         SELECT id, room_id, parent_id, name, created_at, updated_at 
