@@ -16,6 +16,59 @@ type WorkshopRepository struct {
 	db *pgxpool.Pool
 }
 
+func (r *WorkshopRepository) DeleteItem(ctx context.Context, roomID uuid.UUID, itemID uuid.UUID) error {
+	result, err := r.db.Exec(
+		ctx,
+		`DELETE FROM items 
+		 WHERE id = $1 AND room_id = $2`,
+		itemID,
+		roomID,
+	)
+
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return apperrors.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *WorkshopRepository) GetItem(ctx context.Context, roomID uuid.UUID, itemID uuid.UUID) (*models.Item, error) {
+	query := `
+		SELECT 
+			id, room_id, folder_id, title, preview_url, 
+			size_bytes, item_type, status, mime_type, 
+			created_at, updated_at, payload
+		FROM items
+		WHERE id = $1 AND room_id = $2
+	`
+
+	var item models.Item
+	err := r.db.QueryRow(ctx, query, itemID, roomID).Scan(
+		&item.ItemData.ID,
+		&item.ItemData.RoomID,
+		&item.ItemData.FolderID,
+		&item.ItemData.Title,
+		&item.ItemData.PreviewURL,
+		&item.ItemData.SizeBytes,
+		&item.ItemData.ItemType,
+		&item.ItemData.Status,
+		&item.ItemData.MimeType,
+		&item.ItemData.CreatedAt,
+		&item.ItemData.UpdatedAt,
+		&item.Payload,
+	)
+
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+
+	return &item, nil
+} 
+
 func (r *WorkshopRepository) GetItems(ctx context.Context, roomID uuid.UUID, folderID *uuid.UUID) ([]*models.Item, error) {
     query := `
         SELECT 
@@ -230,6 +283,63 @@ func (r *WorkshopRepository) MoveFolder(ctx context.Context, roomID uuid.UUID, f
 		`,
 		newParentID,
 		folderID,
+		roomID,
+	)
+
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return apperrors.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *WorkshopRepository) MoveItem(ctx context.Context, roomID uuid.UUID, itemID uuid.UUID, newFolderID *uuid.UUID) error {
+
+	var exists bool
+	err := r.db.QueryRow(
+		ctx,
+		`SELECT EXISTS(SELECT 1 FROM items WHERE id = $1 AND room_id = $2)`,
+		itemID,
+		roomID,
+	).Scan(&exists)
+
+	if err != nil {
+		return r.parseError(err)
+	}
+	if !exists {
+		return apperrors.ErrNotFound
+	}
+
+	// Если перемещаем в папку (newFolderID != nil), проверяем её существование в той же комнате
+	if newFolderID != nil {
+		err = r.db.QueryRow(
+			ctx,
+			`SELECT EXISTS(SELECT 1 FROM folders WHERE id = $1 AND room_id = $2)`,
+			*newFolderID,
+			roomID,
+		).Scan(&exists)
+
+		if err != nil {
+			return r.parseError(err)
+		}
+		if !exists {
+			return apperrors.ErrNotFound // Или apperrors.ErrInvalidInput, если папка из другой комнаты
+		}
+	}
+
+	// Выполняем обновление
+	result, err := r.db.Exec(
+		ctx,
+		`UPDATE items 
+		 SET folder_id = $1, 
+		     updated_at = NOW() 
+		 WHERE id = $2 AND room_id = $3`,
+		newFolderID,
+		itemID,
 		roomID,
 	)
 

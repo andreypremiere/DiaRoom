@@ -42,7 +42,7 @@ type VideoPayload struct {
 	Duration  int64    `json:"duration"`
 }
 
-func ParseItemPayload(item Item) (interface{}, error) {
+func ParseItemPayload(item *Item) (interface{}, error) {
 	switch item.ItemData.ItemType {
 	case "photo":
 		var p ImagePayload

@@ -296,6 +296,34 @@ func (a *App) handleMoveFolder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (a *App) handleMoveItem(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	var moving requests.MoveItem
+	if err := json.NewDecoder(r.Body).Decode(&moving); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+	defer r.Body.Close()
+
+	err = a.service.MoveItem(r.Context(), roomID, &moving)
+	if err != nil {
+		a.sendError(w, err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (a *App) handleGetFolders(w http.ResponseWriter, r *http.Request) {
 	roomIDStr := r.Header.Get("X-Room-ID")
 	if roomIDStr == "" {
@@ -423,6 +451,40 @@ func (a *App) handleUpdateItemStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 }
+
+func (a *App) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	itemIDStr := r.PathValue("itemId")
+	if itemIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	itemID, err := uuid.Parse(itemIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	err = a.service.DeleteItem(r.Context(), roomID, itemID)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
 	
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -452,12 +514,14 @@ func main() {
 	mux.HandleFunc("POST /createFolder", app.handleCreateFolder)
 	mux.HandleFunc("PATCH /renameFolder/{folderId}", app.handleRenameFolder)
 	mux.HandleFunc("POST /moveFolder", app.handleMoveFolder)
+	mux.HandleFunc("POST /moveItem", app.handleMoveItem)
 	mux.HandleFunc("GET /folders/{roomId}/{folderId}", app.handleGetFolders)
 	mux.HandleFunc("GET /{roomId}", app.handleGetContentRoot)
 	mux.HandleFunc("GET /{roomId}/{folderId}", app.handleGetContentFolder)
 	mux.HandleFunc("POST /createImage", app.handleCreateImageItem)
 	mux.HandleFunc("POST /createVideo", app.handleCreateVideoItem)
 	mux.HandleFunc("POST /updateItemStatus", app.handleUpdateItemStatus)
+	mux.HandleFunc("DELETE /deleteItem/{itemId}", app.handleDeleteItem)
 
 
 	server := &http.Server{

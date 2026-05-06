@@ -14,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
 
@@ -25,7 +26,79 @@ type WorkshopService struct {
 	endpoint string
 }
 
+func (s *WorkshopService) DeleteObjects(ctx context.Context, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
 
+	var objectsToDelete []types.ObjectIdentifier
+	for _, key := range keys {
+		objectsToDelete = append(objectsToDelete, types.ObjectIdentifier{
+			Key: aws.String(key),
+		})
+	}
+
+	_, err := s.s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		Bucket: aws.String(s.bucketName),
+		Delete: &types.Delete{
+			Objects: objectsToDelete,
+			Quiet:   aws.Bool(true), 
+		},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *WorkshopService) DeleteItem(ctx context.Context, roomId uuid.UUID, itemId uuid.UUID) error {
+	item, err := s.repo.GetItem(ctx, roomId, itemId)
+	if err != nil {
+		return err
+	}
+
+	parsedPayload, err := models.ParseItemPayload(item)
+	if err != nil {
+		return apperrors.ErrInternal
+	}
+
+	deletingKeys := make([]string, 0)
+
+	deletingKeys = append(deletingKeys, s.getObjectKey(item.ItemData.PreviewURL)) 
+
+	switch v := parsedPayload.(type) {
+	case models.ImagePayload:
+		deletingKeys = append(deletingKeys, s.getObjectKey(v.PublicURL)) 
+	case models.VideoPayload:
+		deletingKeys = append(deletingKeys, s.getObjectKey(v.PublicURL))
+	default:
+		return apperrors.ErrInternal
+	}
+
+	err = s.DeleteObjects(ctx, deletingKeys)
+	if err != nil {
+		return apperrors.ErrInternal
+	}
+
+	err = s.repo.DeleteItem(ctx, roomId, itemId)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *WorkshopService) getObjectKey(relativeUrl string) string {
+    parts := strings.SplitN(relativeUrl, "/", 2)
+    
+    if len(parts) > 1 {
+        return parts[1]
+    }
+    
+    return "" 
+}
 
 func (s *WorkshopService) ValidateFolderAccess(ctx context.Context, folderID uuid.UUID, roomID uuid.UUID) (bool, error) {
     inRoom, err := s.repo.IsFolderInRoom(ctx, folderID, roomID)
@@ -273,6 +346,10 @@ func (s *WorkshopService) GetContentFolder(ctx context.Context, roomId uuid.UUID
 func (s *WorkshopService) MoveFolder(ctx context.Context, roomID uuid.UUID, moving *requests.MoveFolder) error {
     // Делегируем проверку и обновление репозиторию
     return s.repo.MoveFolder(ctx, roomID, moving.TargetId, moving.DestinationId)
+}
+
+func (s *WorkshopService) MoveItem(ctx context.Context, itemID uuid.UUID, moving *requests.MoveItem) error {
+    return s.repo.MoveItem(ctx, itemID, moving.TargetId, moving.DestinationId)
 }
 
 func (s *WorkshopService) RenameFolder(ctx context.Context, roomID, folderID uuid.UUID, newName string) error {
