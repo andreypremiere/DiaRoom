@@ -452,6 +452,40 @@ func (a *App) handleUpdateItemStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (a *App) handleDeleteFolder(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	folderIDStr := r.PathValue("folderId")
+	if folderIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	folderID, err := uuid.Parse(folderIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	err = a.service.DeleteFolder(r.Context(), roomID, folderID)
+	if err != nil {
+		a.sendError(w, err)
+		return 
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (a *App) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 	roomIDStr := r.Header.Get("X-Room-ID")
 	if roomIDStr == "" {
@@ -522,7 +556,7 @@ func main() {
 	mux.HandleFunc("POST /createVideo", app.handleCreateVideoItem)
 	mux.HandleFunc("POST /updateItemStatus", app.handleUpdateItemStatus)
 	mux.HandleFunc("DELETE /deleteItem/{itemId}", app.handleDeleteItem)
-
+	mux.HandleFunc("DELETE /deleteFolder/{folderId}", app.handleDeleteFolder)
 
 	server := &http.Server{
 		Addr:    ":81",

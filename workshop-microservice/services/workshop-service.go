@@ -26,6 +26,28 @@ type WorkshopService struct {
 	endpoint string
 }
 
+func (s *WorkshopService) getKeysFromItem(item *models.Item) ([]string, error) {
+	deletingKeys := make([]string, 0)
+
+	parsedPayload, err := models.ParseItemPayload(item)
+	if err != nil {
+		return nil, apperrors.ErrInternal
+	}
+
+	deletingKeys = append(deletingKeys, s.getObjectKey(item.ItemData.PreviewURL)) 
+
+	switch v := parsedPayload.(type) {
+	case models.ImagePayload:
+		deletingKeys = append(deletingKeys, s.getObjectKey(v.PublicURL)) 
+	case models.VideoPayload:
+		deletingKeys = append(deletingKeys, s.getObjectKey(v.PublicURL))
+	default:
+		return nil, apperrors.ErrInternal
+	}
+
+	return deletingKeys, nil
+}
+
 func (s *WorkshopService) DeleteObjects(ctx context.Context, keys []string) error {
 	if len(keys) == 0 {
 		return nil
@@ -59,22 +81,9 @@ func (s *WorkshopService) DeleteItem(ctx context.Context, roomId uuid.UUID, item
 		return err
 	}
 
-	parsedPayload, err := models.ParseItemPayload(item)
+	deletingKeys, err := s.getKeysFromItem(item)
 	if err != nil {
-		return apperrors.ErrInternal
-	}
-
-	deletingKeys := make([]string, 0)
-
-	deletingKeys = append(deletingKeys, s.getObjectKey(item.ItemData.PreviewURL)) 
-
-	switch v := parsedPayload.(type) {
-	case models.ImagePayload:
-		deletingKeys = append(deletingKeys, s.getObjectKey(v.PublicURL)) 
-	case models.VideoPayload:
-		deletingKeys = append(deletingKeys, s.getObjectKey(v.PublicURL))
-	default:
-		return apperrors.ErrInternal
+		return err
 	}
 
 	err = s.DeleteObjects(ctx, deletingKeys)
@@ -83,6 +92,56 @@ func (s *WorkshopService) DeleteItem(ctx context.Context, roomId uuid.UUID, item
 	}
 
 	err = s.repo.DeleteItem(ctx, roomId, itemId)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *WorkshopService) DeleteFolder(ctx context.Context, roomId uuid.UUID, folderId uuid.UUID) error {
+	// Проверяем принадлежность папки
+	isValid, err := s.ValidateFolderAccess(ctx, folderId, roomId)
+	if err != nil {
+		return err
+	}
+	if !isValid {
+		return apperrors.ErrAccess
+	}
+
+	foldersIdForDeleting := make([]uuid.UUID, 0)
+	foldersIdForDeleting = append(foldersIdForDeleting, folderId)
+
+	// Находим всех потомков папки (в том числе и вложенных)
+	descendantsFoldersIds, err := s.repo.GetFolderDescendantsIDs(ctx, folderId)
+	if err != nil {
+		return err
+	}
+
+	foldersIdForDeleting = append(foldersIdForDeleting, descendantsFoldersIds...)
+
+	// Находем все файлы на любой глубине для этих папок
+	itemsForDeleting, err := s.repo.GetItemsByFolders(ctx, foldersIdForDeleting)
+	
+	// Извлекаем все ключи медиа
+	keysForDeleting := make([]string, len(itemsForDeleting)*2)
+
+	for idx, _ := range itemsForDeleting {
+		keysItem, err := s.getKeysFromItem(itemsForDeleting[idx])
+		if err != nil {
+			return err
+		}
+		keysForDeleting = append(keysForDeleting, keysItem...)
+	}
+
+	// Удаляем из s3
+	err = s.DeleteObjects(ctx, keysForDeleting)
+	if err != nil {
+		return apperrors.ErrInternal
+	}
+
+	// Удаляем папку (удалит все по каскаду)
+	err = s.repo.DeleteFolderByID(ctx, folderId)
 	if err != nil {
 		return err
 	}

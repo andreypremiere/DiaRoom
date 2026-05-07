@@ -174,6 +174,7 @@ func main() {
 		"/workshop/updateItemStatus",
 		"/workshop/createVideo",
 		"/workshop/deleteItem/[a-zA-Z0-9-]+",
+		"/workshop/deleteFolder/[a-zA-Z0-9-]+",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

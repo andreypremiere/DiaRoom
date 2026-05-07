@@ -10,6 +10,7 @@ func (a AppError) Error() string {
 }
 
 var (
+	ErrAccess = AppError{Code: "ACCESS_FAILED", Message: "Нет доступа к ресурсу"}
 	ErrNotFound = AppError{Code: "NOT_FOUND", Message: "Объект не найден"}
 	ErrAlreadyExists = AppError{Code: "ALREADY_EXISTS", Message: "Объект уже существует"}
     ErrInvalidInput = AppError{Code: "INVALID_INPUT", Message: "Некорректные входные данные"}

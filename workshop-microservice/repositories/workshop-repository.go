@@ -16,6 +16,109 @@ type WorkshopRepository struct {
 	db *pgxpool.Pool
 }
 
+func (r *WorkshopRepository) DeleteFolderByID(ctx context.Context, folderID uuid.UUID) error {
+	query := `DELETE FROM folders WHERE id = $1`
+	
+	result, err := r.db.Exec(ctx, query, folderID)
+	if err != nil {
+		return r.parseError(err)
+	}
+	
+	if result.RowsAffected() == 0 {
+		return apperrors.ErrNotFound
+	}
+	
+	return nil
+}
+
+func (r *WorkshopRepository) GetItemsByFolders(ctx context.Context, folderIDs []uuid.UUID) ([]*models.Item, error) {
+	if len(folderIDs) == 0 {
+		return []*models.Item{}, nil
+	}
+
+	query := `
+		SELECT 
+			id, room_id, folder_id, title, preview_url, 
+			size_bytes, item_type, status, mime_type, 
+			created_at, updated_at, payload
+		FROM items
+		WHERE folder_id = ANY($1)
+	`
+
+	rows, err := r.db.Query(ctx, query, folderIDs)
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	var items []*models.Item
+	for rows.Next() {
+		var item models.Item
+		err := rows.Scan(
+			&item.ItemData.ID,
+			&item.ItemData.RoomID,
+			&item.ItemData.FolderID,
+			&item.ItemData.Title,
+			&item.ItemData.PreviewURL,
+			&item.ItemData.SizeBytes,
+			&item.ItemData.ItemType,
+			&item.ItemData.Status,
+			&item.ItemData.MimeType,
+			&item.ItemData.CreatedAt,
+			&item.ItemData.UpdatedAt,
+			&item.Payload,
+		)
+		if err != nil {
+			return nil, r.parseError(err)
+		}
+		items = append(items, &item)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, r.parseError(err)
+	}
+
+	return items, nil
+}
+
+func (r *WorkshopRepository) GetFolderDescendantsIDs(ctx context.Context, folderID uuid.UUID) ([]uuid.UUID, error) {
+	query := `
+		WITH RECURSIVE descendants AS (
+			SELECT id
+			FROM folders
+			WHERE id = $1
+
+			UNION ALL
+
+			SELECT f.id
+			FROM folders f
+			JOIN descendants d ON f.parent_id = d.id
+		)
+		SELECT id FROM descendants;
+	`
+
+	rows, err := r.db.Query(ctx, query, folderID)
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, r.parseError(err)
+		}
+		ids = append(ids, id)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, r.parseError(err)
+	}
+
+	return ids, nil
+}
+
 func (r *WorkshopRepository) DeleteItem(ctx context.Context, roomID uuid.UUID, itemID uuid.UUID) error {
 	result, err := r.db.Exec(
 		ctx,
