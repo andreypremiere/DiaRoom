@@ -1,5 +1,5 @@
 -- Тип самого сообщения
-CREATE TYPE message_type AS ENUM ('standard', 'voice', 'video_note');
+CREATE TYPE message_type AS ENUM ('standard', 'voice_note', 'video_note');
 
 -- Тип вложения
 CREATE TYPE attachment_type AS ENUM ('photo', 'video', 'voice_note', 'video_note');
@@ -39,3 +39,6 @@ CREATE TABLE attachments (
 );
 
 CREATE INDEX idx_attachments_message_id ON attachments(message_id, created_at);
+
+ALTER TABLE attachments 
+ADD COLUMN preview_s3_key TEXT; -- Ключ для превью (миниатюры) в S3
