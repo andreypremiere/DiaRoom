@@ -3,6 +3,7 @@ postgresql-users/
 postgresql-posts/
 postgresql-accounts/
 postgresql-workshop/
+postgresql-diary/
 
 go.sum
 .idea/
