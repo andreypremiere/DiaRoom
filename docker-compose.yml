@@ -54,6 +54,30 @@ services:
     networks:
       - backend-application
 
+  workshop-microservice:
+    build: ./workshop-microservice
+    container_name: workshop-microservice
+    env_file:
+      - .env
+    ports:
+      - "8085:81"
+    volumes:
+      - ./workshop-microservice:/app
+    networks:
+      - backend-application
+
+  diary-microservice:
+    build: ./diary-microservice
+    container_name: diary-microservice
+    env_file:
+      - .env
+    ports:
+      - "8082:81"
+    volumes:
+      - ./diary-microservice:/app
+    networks:
+      - backend-application
+
   postgresql-accounts:
     image: postgres:18.2-alpine3.23
     container_name: postgresql-accounts
@@ -82,21 +106,48 @@ services:
     networks:
       - backend-application
 
+  postgresql-workshop:
+    image: postgres:18.2-alpine3.23
+    container_name: postgresql-workshop
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1111"
+      POSTGRES_DB: db_workshop
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./postgresql-workshop:/var/lib/postgresql
+    networks:
+      - backend-application
+
+  postgresql-diary:
+    image: postgres:18.2-alpine3.23
+    container_name: postgresql-diary
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1111"
+      POSTGRES_DB: db_diary
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgresql-diary:/var/lib/postgresql
+    networks:
+      - backend-application
+
   checking-content-microservice:
     build: ./content-checking-microservice
     # container_name: checking-content-microservice
     # ports:
     #   - "8084:8000"
     volumes:
-    - ./content-checking-microservice:/app
+      - ./content-checking-microservice:/app
     networks:
       - backend-application
-    deploy:           
-      resources:      
-        limits:       
-          cpus: '3'  # Ограничение: не более 300% (3 ядер)
-          memory: 2G   # Ограничение: не более 2 ГБ оперативной памяти
-
+    deploy:
+      resources:
+        limits:
+          cpus: '3' # Ограничение: не более 300% (3 ядер)
+          memory: 2G # Ограничение: не более 2 ГБ оперативной памяти
 
   redis-queue:
     image: redis:8.6.0-alpine3.23
@@ -104,8 +155,7 @@ services:
     ports:
       - "6380:6379"
     networks:
-    - backend-application
-    
+      - backend-application
 
   redis-otp-code:
     image: redis:8.6.0-alpine3.23
@@ -115,3 +165,10 @@ services:
     networks:
       - backend-application
 
+  redis-diary:
+    image: redis:8.6.0-alpine3.23
+    container_name: redis-diary
+    ports:
+      - "6381:6379"
+    networks:
+      - backend-application
