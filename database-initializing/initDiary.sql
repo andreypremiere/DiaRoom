@@ -42,3 +42,13 @@ CREATE INDEX idx_attachments_message_id ON attachments(message_id, created_at);
 
 ALTER TABLE attachments 
 ADD COLUMN preview_s3_key TEXT; -- Ключ для превью (миниатюры) в S3
+
+CREATE TYPE message_status AS ENUM ('sending', 'sent', 'failed');
+
+ALTER TABLE messages 
+ADD COLUMN status message_status DEFAULT 'sending';
+
+CREATE INDEX idx_messages_status ON messages(status);
+
+ALTER TABLE attachments 
+ADD COLUMN room_id UUID NOT NULL;

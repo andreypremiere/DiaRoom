@@ -8,6 +8,7 @@ import (
 
 type Attachment struct {
 	ID            uuid.UUID `json:"id" db:"id"`
+	RoomID		  uuid.UUID `json:"roomId" db:"room_id"`
 	MessageID     uuid.UUID `json:"messageId" db:"message_id"`
 	AttType       string    `json:"attType" db:"att_type"` // photo, video, voice_note, video_note
 	S3Key         string    `json:"s3Key" db:"s3_key"`

@@ -11,6 +11,7 @@ type Message struct {
 	RoomID                   uuid.UUID  `json:"roomId" db:"room_id"`
 	MsgType                  string     `json:"msgType" db:"msg_type"` // standard, voice_note, video_note
 	Content                  *string    `json:"content" db:"content"`   
+	Status 					 *string    `json:"status" db:"status"`
 	AttachedObjectWorkshopID *uuid.UUID `json:"attachedObjectWorkshopId" db:"attached_object_workshop_id"`
 	AttachedObjectPostID     *uuid.UUID `json:"attachedObjectPostId" db:"attached_object_post_id"`
 	CreatedAt                time.Time  `json:"createdAt" db:"created_at"`
