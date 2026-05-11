@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	apperrors "diary-microservice/app-errors"
+	"diary-microservice/contracts/requests"
 	"diary-microservice/database"
 	"diary-microservice/repositories"
 	"diary-microservice/services"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -20,11 +26,68 @@ type App struct {
 	service *services.DiaryService
 }
 
+func (a *App) sendError(ctx echo.Context, err error) error {
+	var appErr apperrors.AppError
+
+	status := http.StatusInternalServerError
+
+	if errors.As(err, &appErr) {
+		switch appErr.Code {
+		case "NOT_FOUND":
+			status = http.StatusNotFound
+		case "ALREADY_EXISTS":
+			status = http.StatusConflict
+		case "METHOD_NOT_ALLOWED":
+			status = http.StatusMethodNotAllowed
+		case "UNSUPPORTED_TYPE":
+			status = http.StatusUnsupportedMediaType
+		case "INVALID_INPUT":
+			status = http.StatusBadRequest
+		default:
+			status = http.StatusBadRequest
+		}
+	} else {
+		appErr = apperrors.ErrInternal
+	}
+
+	return ctx.JSON(status, map[string]string{
+		"error_code": appErr.Code,
+		"message":    appErr.Message,
+	})
+}
+
 func (a *App) health(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
 	})
+}
+
+func (a *App) createMessage(c echo.Context) error {
+	roomIdStr := c.Request().Header.Get("X-Room-ID")
+	if roomIdStr == "" {
+		return a.sendError(c, apperrors.ErrAccess)
+	}
+	roomId, err := uuid.Parse(roomIdStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	req := new(requests.MessageCreateRequest)
+    
+    if err := c.Bind(req); err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput) 
+    }
+	fmt.Println("Это запрос:")
+	spew.Dump(req)
+
+	ctx := c.Request().Context()
+	response, err := a.service.CreateMessage(ctx, roomId, req)
+
+	fmt.Println("Это ответ:")
+	spew.Dump(response)
+
+	return c.JSON(http.StatusCreated, response)
 }
 
 func main() {
@@ -73,6 +136,7 @@ func main() {
 
 	// Базовый роут для проверки работоспособности
 	e.GET("/health", app.health)
+	e.POST("/createMessage", app.createMessage)
 
 	// TODO: Здесь будут роуты для WebSocket и API
 

@@ -124,7 +124,7 @@ func (s *WorkshopService) DeleteFolder(ctx context.Context, roomId uuid.UUID, fo
 	itemsForDeleting, err := s.repo.GetItemsByFolders(ctx, foldersIdForDeleting)
 	
 	// Извлекаем все ключи медиа
-	keysForDeleting := make([]string, len(itemsForDeleting)*2)
+	keysForDeleting := make([]string, 0, len(itemsForDeleting)*2)
 
 	for idx, _ := range itemsForDeleting {
 		keysItem, err := s.getKeysFromItem(itemsForDeleting[idx])
