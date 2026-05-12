@@ -102,6 +102,10 @@ func (s *DiaryService) CreateMessage(ctx context.Context, roomId uuid.UUID, req 
 	}
 }
 
+func (s *DiaryService) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingMessage) error {
+	return s.repo.UpdateMessageStatus(ctx, roomId, req.MessageID, req.Status)
+}
+
 func NewDiaryService(repo *repositories.DiaryRepository, s3 *S3Manager, redisClient *redis.Client) *DiaryService {
 	return &DiaryService{
 		repo:  repo,

@@ -6,6 +6,7 @@ import (
 	"diary-microservice/models"
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -100,6 +101,26 @@ func (r *DiaryRepository) CreateMessageWithAttachments(ctx context.Context, msg 
 	//  Подтверждаем транзакцию
 	if err := tx.Commit(ctx); err != nil {
 		return r.parseError(err)
+	}
+
+	return nil
+}
+
+func (r *DiaryRepository) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID, messageId string, status string) error {
+	query := `
+		UPDATE messages 
+		SET status = $1, updated_at = NOW() 
+		WHERE id = $2 AND room_id = $3
+	`
+
+	result, err := r.db.Exec(ctx, query, status, messageId, roomId)
+	if err != nil {
+		return r.parseError(err)
+	}
+
+
+	if result.RowsAffected() == 0 {
+		return apperrors.ErrNotFound
 	}
 
 	return nil

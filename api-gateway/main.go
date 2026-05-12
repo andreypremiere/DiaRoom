@@ -177,5 +177,10 @@ func main() {
 		"/workshop/deleteFolder/[a-zA-Z0-9-]+",
 	})
 
+	gateway.AddRoute("/diary", "http://diary-microservice:81", []string{
+		"/diary/createMessage", 
+		"/diary/updateStatusMessage", 
+	})
+
 	log.Fatal(http.ListenAndServe(":80", gateway))
 }

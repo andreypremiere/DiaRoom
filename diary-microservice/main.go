@@ -90,6 +90,31 @@ func (a *App) createMessage(c echo.Context) error {
 	return c.JSON(http.StatusCreated, response)
 }
 
+func (a *App) updateStatusMessage(c echo.Context) error {
+	roomIdStr := c.Request().Header.Get("X-Room-ID")
+	if roomIdStr == "" {
+		return a.sendError(c, apperrors.ErrAccess)
+	}
+	roomId, err := uuid.Parse(roomIdStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	req := new(requests.UpdatingMessage)
+    
+    if err := c.Bind(req); err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput) 
+    }
+
+	ctx := c.Request().Context()
+	err = a.service.UpdateMessageStatus(ctx, roomId, req)
+	if err != nil {
+		return a.sendError(c, err)
+	}
+
+	return c.NoContent(http.StatusOK)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -137,6 +162,7 @@ func main() {
 	// Базовый роут для проверки работоспособности
 	e.GET("/health", app.health)
 	e.POST("/createMessage", app.createMessage)
+	e.POST("/updateStatusMessage", app.updateStatusMessage)
 
 	// TODO: Здесь будут роуты для WebSocket и API
 
