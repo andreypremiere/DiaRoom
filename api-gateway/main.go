@@ -180,6 +180,7 @@ func main() {
 	gateway.AddRoute("/diary", "http://diary-microservice:81", []string{
 		"/diary/createMessage", 
 		"/diary/updateStatusMessage", 
+		"/diary/messages/[a-zA-Z0-9-]+",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))

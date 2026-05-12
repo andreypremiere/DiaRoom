@@ -40,6 +40,67 @@ func (r *DiaryRepository) parseError(err error) error {
 	return apperrors.ErrInternal
 }
 
+func (r *DiaryRepository) GetMessagesByRoom(ctx context.Context, roomID uuid.UUID, limit, offset int) ([]*models.Message, error) {
+	query := `
+		SELECT id, room_id, msg_type, content, status, attached_object_workshop_id, attached_object_post_id, created_at
+		FROM messages
+		WHERE room_id = $1 AND status = 'sent'
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := r.db.Query(ctx, query, roomID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []*models.Message
+	for rows.Next() {
+		m := new(models.Message)
+		err := rows.Scan(
+			&m.ID, &m.RoomID, &m.MsgType, &m.Content, &m.Status,
+			&m.AttachedObjectWorkshopID, &m.AttachedObjectPostID, &m.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+	}
+	return messages, nil
+}
+
+func (r *DiaryRepository) GetAttachmentsByMessageIDs(ctx context.Context, messageIDs []uuid.UUID) ([]*models.Attachment, error) {
+	if len(messageIDs) == 0 {
+		return []*models.Attachment{}, nil
+	}
+
+	query := `
+		SELECT id, room_id, message_id, att_type, s3_key, preview_s3_key, file_size_bytes, duration
+		FROM attachments
+		WHERE message_id = ANY($1)
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.Query(ctx, query, messageIDs)
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	var attachments []*models.Attachment
+	for rows.Next() {
+		a := new(models.Attachment)
+		err := rows.Scan(
+			&a.ID, &a.RoomID, &a.MessageID, &a.AttType, &a.S3Key,
+			&a.PreviewS3Key, &a.FileSizeBytes, &a.Duration,
+		)
+		if err != nil {
+			return nil, r.parseError(err)
+		}
+		attachments = append(attachments, a)
+	}
+	return attachments, nil
+}
+
 func (r *DiaryRepository) CreateMessageWithAttachments(ctx context.Context, msg *models.Message, attachments []*models.Attachment) error {
 	// Начинаем транзакцию
 	tx, err := r.db.Begin(ctx)

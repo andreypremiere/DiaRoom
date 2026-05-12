@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -115,6 +116,35 @@ func (a *App) updateStatusMessage(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
+func (a *App) GetMessages(c echo.Context) error {
+	roomIDStr := c.Param("roomId")
+	roomID, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page < 0 {
+		page = 0
+	}
+
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	// Рассчитываем смещение (offset)
+	offset := page * limit
+
+	ctx := c.Request().Context()
+	messages, err := a.service.GetMessages(ctx, roomID, limit, offset)
+	if err != nil {
+		return a.sendError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, messages)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -163,6 +193,7 @@ func main() {
 	e.GET("/health", app.health)
 	e.POST("/createMessage", app.createMessage)
 	e.POST("/updateStatusMessage", app.updateStatusMessage)
+	e.GET("/messages/:roomId", app.GetMessages)
 
 	// TODO: Здесь будут роуты для WebSocket и API
 

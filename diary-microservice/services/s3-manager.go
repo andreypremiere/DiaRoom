@@ -53,6 +53,10 @@ func (s *S3Manager) getFullUrl(relativePath string) string {
 	return fmt.Sprintf("%s/%s", s.endpoint, relativePath)
 }
 
+func (s *S3Manager) getFullUrlFromKey(key string) string {
+	return fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucketName, key)
+}
+
 func (s *S3Manager) GenerateUploadUrls(ctx context.Context, key string, mimeType string) (string, string, error) {
 	// Генерируем публичную ссылку
 	// Формат для Yandex: https://storage.yandexcloud.net/bucket/key

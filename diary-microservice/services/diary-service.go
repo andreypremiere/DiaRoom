@@ -19,6 +19,57 @@ type DiaryService struct {
 	redis *redis.Client
 }
 
+func (s *DiaryService) GetMessages(ctx context.Context, roomID uuid.UUID, limit, offset int) (*responses.GettingMessages, error) {
+	messages, err := s.repo.GetMessagesByRoom(ctx, roomID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(messages) == 0 {
+		return &responses.GettingMessages{Messages: []*responses.MessageResponse{}}, nil
+	}
+
+	msgIDs := make([]uuid.UUID, len(messages))
+	for i, m := range messages {
+		msgIDs[i] = m.ID
+	}
+
+	allAttachments, err := s.repo.GetAttachmentsByMessageIDs(ctx, msgIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allAttachments) > 0 {
+		for idx, _ := range allAttachments {
+			if allAttachments[idx].PreviewS3Key != nil {
+				fullURL := s.s3.getFullUrlFromKey(*allAttachments[idx].PreviewS3Key)
+				allAttachments[idx].PreviewS3Key = &fullURL
+			}
+
+			fullURL := s.s3.getFullUrlFromKey(allAttachments[idx].S3Key)
+			allAttachments[idx].S3Key = fullURL
+		}
+	}
+
+	attMap := make(map[uuid.UUID][]*models.Attachment)
+	for _, att := range allAttachments {
+		attMap[att.MessageID] = append(attMap[att.MessageID], att)
+	}
+
+	result := &responses.GettingMessages{
+		Messages: make([]*responses.MessageResponse, len(messages)),
+	}
+
+	for i, msg := range messages {
+		result.Messages[i] = &responses.MessageResponse{
+			Message:    msg,
+			Attachment: attMap[msg.ID], 
+		}
+	}
+
+	return result, nil
+}
+
 func (s *DiaryService) CreateMessage(ctx context.Context, roomId uuid.UUID, req *requests.MessageCreateRequest) (*responses.MessageCreateResponse, error) {
 	// Обработка для стандартного сообщения
 	if req.MsgType == "standard" {
