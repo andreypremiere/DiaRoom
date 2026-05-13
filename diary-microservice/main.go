@@ -108,12 +108,12 @@ func (a *App) updateStatusMessage(c echo.Context) error {
     }
 
 	ctx := c.Request().Context()
-	err = a.service.UpdateMessageStatus(ctx, roomId, req)
+	response, err := a.service.UpdateMessageStatus(ctx, roomId, req)
 	if err != nil {
 		return a.sendError(c, err)
 	}
 
-	return c.NoContent(http.StatusOK)
+	return c.JSON(http.StatusOK, response)
 }
 
 func (a *App) GetMessages(c echo.Context) error {

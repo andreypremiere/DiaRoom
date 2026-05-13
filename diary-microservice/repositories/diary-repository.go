@@ -69,6 +69,23 @@ func (r *DiaryRepository) GetMessagesByRoom(ctx context.Context, roomID uuid.UUI
 	return messages, nil
 }
 
+func (r *DiaryRepository) GetMessageByID(ctx context.Context, roomID uuid.UUID, messageID uuid.UUID) (*models.Message, error) {
+    query := `
+        SELECT id, room_id, msg_type, content, status, attached_object_workshop_id, attached_object_post_id, created_at
+        FROM messages
+        WHERE id = $1 AND room_id = $2
+    `
+    m := new(models.Message)
+    err := r.db.QueryRow(ctx, query, messageID, roomID).Scan(
+        &m.ID, &m.RoomID, &m.MsgType, &m.Content, &m.Status,
+        &m.AttachedObjectWorkshopID, &m.AttachedObjectPostID, &m.CreatedAt,
+    )
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    return m, nil
+}
+
 func (r *DiaryRepository) GetAttachmentsByMessageIDs(ctx context.Context, messageIDs []uuid.UUID) ([]*models.Attachment, error) {
 	if len(messageIDs) == 0 {
 		return []*models.Attachment{}, nil
@@ -167,7 +184,7 @@ func (r *DiaryRepository) CreateMessageWithAttachments(ctx context.Context, msg 
 	return nil
 }
 
-func (r *DiaryRepository) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID, messageId string, status string) error {
+func (r *DiaryRepository) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID, messageId uuid.UUID, status string) error {
 	query := `
 		UPDATE messages 
 		SET status = $1, updated_at = NOW() 

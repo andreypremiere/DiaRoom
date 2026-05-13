@@ -1,6 +1,8 @@
 package requests
 
+import "github.com/google/uuid"
+
 type UpdatingMessage struct {
-	MessageID string `json:"messageId"`
+	MessageID uuid.UUID `json:"messageId"`
 	Status    string `json:"status"`
 }
