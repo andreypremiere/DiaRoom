@@ -52,3 +52,20 @@ CREATE INDEX idx_messages_status ON messages(status);
 
 ALTER TABLE attachments 
 ADD COLUMN room_id UUID NOT NULL;
+
+CREATE TABLE tags (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id UUID NOT NULL, 
+    name VARCHAR(50) NOT NULL,
+    color BIGINT DEFAULT 4282368243,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    UNIQUE(room_id, name) 
+);
+
+CREATE TABLE message_tags (
+    message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    
+    PRIMARY KEY (message_id, tag_id)
+);

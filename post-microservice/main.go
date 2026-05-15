@@ -196,7 +196,19 @@ func (a *App) GetAllPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	posts, err := a.service.GetAllPosts(r.Context())
+	query := r.URL.Query()
+
+	page, err := strconv.Atoi(query.Get("page"))
+	if err != nil || page < 0 {
+		page = 0
+	}
+
+	limit, err := strconv.Atoi(query.Get("limit"))
+	if err != nil || limit <= 0 {
+		limit = 20
+	}
+
+	posts, err := a.service.GetAllPosts(r.Context(), page, limit)
 	if err != nil {
 		a.sendError(w, err)
 		return

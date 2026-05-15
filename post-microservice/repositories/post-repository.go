@@ -23,7 +23,7 @@ type PostRepositoryInter interface {
 	AddHashtagsToPost(ctx context.Context, postID uuid.UUID, hashtags []string) error
 	InsertCanvasAndUpdatePost(ctx context.Context, postID uuid.UUID, payloadJSON []byte) error
     PushPostToQueue(ctx context.Context, postID uuid.UUID) error
-    GetAllPosts(ctx context.Context) ([]responses.PostInfo, error)
+    GetAllPosts(ctx context.Context, limit int, offset int) ([]responses.PostInfo, error)
     GetPostForShowing(ctx context.Context, postID uuid.UUID) (*responses.ShowingPost, error)
 	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
 	GetPersonalPosts(ctx context.Context, roomId uuid.UUID) ([]responses.PostInfoPersonal, error)
@@ -291,7 +291,7 @@ func (r *PostRepository) GetPostForShowing(ctx context.Context, postID uuid.UUID
 	return &post, nil
 }
 
-func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo, error) {
+func (r *PostRepository) GetAllPosts(ctx context.Context, limit int, offset int) ([]responses.PostInfo, error) {
 	query := `
 		SELECT 
 			p.id, 
@@ -306,10 +306,11 @@ func (r *PostRepository) GetAllPosts(ctx context.Context) ([]responses.PostInfo,
 		WHERE p.status = 'published' 
           AND p.ai_check_status = 'passed'
           AND p.canvas_id IS NOT NULL
-		ORDER BY p.published_at DESC
+		ORDER BY p.published_at DESC, p.id DESC
+        LIMIT $1 OFFSET $2;
 	`
 
-	rows, err := r.db.Query(ctx, query)
+	rows, err := r.db.Query(ctx, query, limit, offset)
 	if err != nil {
 		return nil, r.parseError(err)
 	}

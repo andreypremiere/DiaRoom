@@ -26,7 +26,7 @@ type PostServiceInter interface {
     CreatePost(ctx context.Context, req models.CreatePostRequest) (*models.CreatePostResponse, error)
 	GenerateMediaUrls(ctx context.Context, roomID uuid.UUID, req models.GenerateUrlsRequest) (*models.GenerateUrlsResponse, error)
 	CreateAndAttachCanvas(ctx context.Context, postID uuid.UUID, payload json.RawMessage) error
-	GetAllPosts(ctx context.Context) ([]responses.Post, error)
+	GetAllPosts(ctx context.Context, page int, limit int) ([]responses.Post, error)
 	GetPostForShowing(ctx context.Context, postId uuid.UUID) (*responses.ShowingPost, error)
 	UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error
 	GetPersonalPosts(ctx context.Context,  roomId uuid.UUID) ([]responses.PostInfoPersonal, error)
@@ -228,8 +228,10 @@ func (s *PostService) GetPostForShowing(ctx context.Context, postId uuid.UUID) (
 	return post, nil 
 }
 
-func (s *PostService) GetAllPosts(ctx context.Context) ([]responses.Post, error) {
-	postsInfo, err := s.repo.GetAllPosts(ctx)
+func (s *PostService) GetAllPosts(ctx context.Context, page int, limit int) ([]responses.Post, error) {
+	offset := page * limit
+
+	postsInfo, err := s.repo.GetAllPosts(ctx, limit, offset)
 	if err != nil {
 		return nil, err
 	}
