@@ -9,4 +9,5 @@ type GettingMessages struct {
 type MessageResponse struct {
 	*models.Message
 	Attachment []*models.Attachment `json:"attachments"`
+	Tags []*models.Tag `json:"tags"`
 }

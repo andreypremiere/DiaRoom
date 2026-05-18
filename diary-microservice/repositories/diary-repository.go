@@ -118,7 +118,57 @@ func (r *DiaryRepository) GetAttachmentsByMessageIDs(ctx context.Context, messag
 	return attachments, nil
 }
 
-func (r *DiaryRepository) CreateMessageWithAttachments(ctx context.Context, msg *models.Message, attachments []*models.Attachment) error {
+func (r *DiaryRepository) GetTagsByMessageIDs(ctx context.Context, messageIDs []uuid.UUID) (map[uuid.UUID][]*models.Tag, error) {
+    // 1. Защита от пустого слайса, чтобы не делать холостой запрос в базу
+    if len(messageIDs) == 0 {
+        return make(map[uuid.UUID][]*models.Tag), nil
+    }
+
+    // 2. SQL-запрос с JOIN таблицы связей и таблицы самих тегов
+    query := `
+        SELECT mt.message_id, t.id, t.room_id, t.name, t.color
+        FROM message_tags mt
+        JOIN tags t ON mt.tag_id = t.id
+        WHERE mt.message_id = ANY($1)
+        ORDER BY t.name ASC
+    `
+
+    rows, err := r.db.Query(ctx, query, messageIDs)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    // Инициализируем карту результатов
+    result := make(map[uuid.UUID][]*models.Tag)
+
+    // Сканируем строки
+    for rows.Next() {
+        var msgID uuid.UUID
+        tag := &models.Tag{}
+
+        err := rows.Scan(
+            &msgID,     
+            &tag.Id,
+            &tag.RoomId,
+            &tag.Name,
+            &tag.Color,
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+
+        result[msgID] = append(result[msgID], tag)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return result, nil
+}
+
+func (r *DiaryRepository) CreateMessageWithAttachments(ctx context.Context, msg *models.Message, attachments []*models.Attachment, tags []*models.Tag) error {
 	// Начинаем транзакцию
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -175,6 +225,23 @@ func (r *DiaryRepository) CreateMessageWithAttachments(ctx context.Context, msg 
 			}
 		}
 	}
+
+	// Связываем теги
+	if len(tags) > 0 {
+        queryTags := `
+            INSERT INTO message_tags (message_id, tag_id) 
+            VALUES ($1, $2)
+        `
+
+        for _, t := range tags {
+            if t == nil { continue }
+
+            _, err = tx.Exec(ctx, queryTags, msg.ID, t.Id)
+            if err != nil {
+                return r.parseError(err) // Если упадет, defer tx.Rollback отменит всё
+            }
+        }
+    }
 
 	//  Подтверждаем транзакцию
 	if err := tx.Commit(ctx); err != nil {

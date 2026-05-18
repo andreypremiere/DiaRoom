@@ -1,6 +1,10 @@
 package requests
 
-import "github.com/google/uuid"
+import (
+	"diary-microservice/models"
+
+	"github.com/google/uuid"
+)
 
 type MessageCreateRequest struct {
 	// Тип сообщения (standard, voice_note, video_note)
@@ -15,6 +19,8 @@ type MessageCreateRequest struct {
 	// Внешние ID (опционально)
 	WorkshopFolderId  *uuid.UUID `json:"workshopFolderId"`
 	PublicationPostId *uuid.UUID `json:"publicationPostId"`
+
+	Tags []*models.Tag `json:"tags"`
 }
 
 // AttachmentRequest - метаданные вложения для генерации ссылок S3

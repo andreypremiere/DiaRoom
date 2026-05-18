@@ -56,14 +56,25 @@ func (s *DiaryService) GetMessages(ctx context.Context, roomID uuid.UUID, limit,
 		attMap[att.MessageID] = append(attMap[att.MessageID], att)
 	}
 
+	tags, err := s.repo.GetTagsByMessageIDs(ctx, msgIDs)
+    if err != nil {
+        return nil, err
+    }
+
 	result := &responses.GettingMessages{
 		Messages: make([]*responses.MessageResponse, len(messages)),
 	}
 
 	for i, msg := range messages {
+		msgTags := tags[msg.ID]
+        if msgTags == nil {
+            msgTags = []*models.Tag{}
+        }
+
 		result.Messages[i] = &responses.MessageResponse{
 			Message:    msg,
 			Attachment: attMap[msg.ID], 
+			Tags: msgTags,
 		}
 	}
 
@@ -71,224 +82,99 @@ func (s *DiaryService) GetMessages(ctx context.Context, roomID uuid.UUID, limit,
 }
 
 func (s *DiaryService) CreateMessage(ctx context.Context, roomId uuid.UUID, req *requests.MessageCreateRequest) (*responses.MessageCreateResponse, error) {
-	// Обработка для стандартного сообщения
-	if req.MsgType == "standard" {
-		if len(req.Attachments) > 7 {
-			return nil, apperrors.ErrInternal
-		}
-
-		// Создаем новый объект сообщения
-		messageUUID := uuid.New()
-		status := "sending"
-
-		newMessage := &models.Message{
-			ID: messageUUID,
-			RoomID: roomId,
-			MsgType: req.MsgType,
-			Content: req.Content,
-			Status: &status,
-			AttachedObjectWorkshopID: req.WorkshopFolderId,
-			AttachedObjectPostID: req.PublicationPostId,
-		}
-
-		// Формируем список ответов
-		attachmentsCreating := make([]*responses.AttachmentUploadItem, 0, len(req.Attachments))
-
-		// Создаем список вложений
-		attachments := make([]*models.Attachment, 0, len(req.Attachments))
-
-		for _, item := range req.Attachments {
-
-			//Получаем публичный и статичный ключ для превью (roomId/messageId/uuid.ext)
-			keyPreview := fmt.Sprintf("%s/%s/%s%s", roomId, messageUUID, uuid.New(), ".jpeg")
-			_, presignedUrlPreview, err := s.s3.GenerateUploadUrls(ctx, keyPreview, "image/jpeg")
-			if err != nil {
-				return nil, apperrors.ErrInternal
-			}
-
-			// Получаем публичный и статичный ключ для файла
-			key := fmt.Sprintf("%s/%s/%s%s", roomId, messageUUID, uuid.New(), s.s3.getExtensionFromMimeType(item.MimeType))
-			_, presignedUrl, err := s.s3.GenerateUploadUrls(ctx, key, item.MimeType)
-			if err != nil {
-				return nil, apperrors.ErrInternal
-			}
-			attachId := uuid.New()
-			newAttach := &models.Attachment{
-				ID: attachId,
-				RoomID: roomId,
-				MessageID: messageUUID,
-				AttType: item.AttType,
-				S3Key: key,
-				PreviewS3Key: &keyPreview,
-				FileSizeBytes: item.FileSizeBytes,
-				Duration: item.Duration,
-			}
-
-			attachments = append(attachments, newAttach)
-
-			attachResponse := &responses.AttachmentUploadItem{
-				AttachmentID: attachId,
-				PresignedURL: presignedUrl,
-				PresignedPreviewURL: &presignedUrlPreview,
-			}
-
-			attachmentsCreating = append(attachmentsCreating, attachResponse)
-		}
-
-		err := s.repo.CreateMessageWithAttachments(ctx, newMessage, attachments)
-		if err != nil {
-			return nil, err
-		}
-
-		messageResponse := &responses.MessageCreateResponse{
-			MessageID: messageUUID,
-			Status: status,
-			UploadItems: attachmentsCreating,
-		}
-
-		return messageResponse, nil
-
-	} else if req.MsgType == "voice_note" {
-		if len(req.Attachments) != 1 {
-			return nil, apperrors.ErrInternal
-		}
-
-		// Создаем новый объект сообщения
-		messageUUID := uuid.New()
-		status := "sending"
-
-		newMessage := &models.Message{
-			ID: messageUUID,
-			RoomID: roomId,
-			MsgType: req.MsgType,
-			Content: req.Content,
-			Status: &status,
-			AttachedObjectWorkshopID: req.WorkshopFolderId,
-			AttachedObjectPostID: req.PublicationPostId,
-		}
-
-		// Формируем список ответов
-		attachmentsCreating := make([]*responses.AttachmentUploadItem, 0, len(req.Attachments))
-
-		// Создаем список вложений
-		attachments := make([]*models.Attachment, 0, len(req.Attachments))
-
-		for _, item := range req.Attachments {
-			// Получаем публичный и статичный ключ для файла
-			key := fmt.Sprintf("%s/%s/%s%s", roomId, messageUUID, uuid.New(), s.s3.getExtensionFromMimeType(item.MimeType))
-			_, presignedUrl, err := s.s3.GenerateUploadUrls(ctx, key, item.MimeType)
-			if err != nil {
-				return nil, apperrors.ErrInternal
-			}
-			attachId := uuid.New()
-			newAttach := &models.Attachment{
-				ID: attachId,
-				RoomID: roomId,
-				MessageID: messageUUID,
-				AttType: item.AttType,
-				S3Key: key,
-				FileSizeBytes: item.FileSizeBytes,
-				Duration: item.Duration,
-			}
-
-			attachments = append(attachments, newAttach)
-
-			attachResponse := &responses.AttachmentUploadItem{
-				AttachmentID: attachId,
-				PresignedURL: presignedUrl,
-			}
-
-			attachmentsCreating = append(attachmentsCreating, attachResponse)
-		}
-
-		err := s.repo.CreateMessageWithAttachments(ctx, newMessage, attachments)
-		if err != nil {
-			return nil, err
-		}
-
-		messageResponse := &responses.MessageCreateResponse{
-			MessageID: messageUUID,
-			Status: status,
-			UploadItems: attachmentsCreating,
-		}
-
-		return messageResponse, nil
-	} else if req.MsgType == "video_note" {
-		if len(req.Attachments) != 1 {
-			return nil, apperrors.ErrInternal
-		}
-
-		// Создаем новый объект сообщения
-		messageUUID := uuid.New()
-		status := "sending"
-
-		newMessage := &models.Message{
-			ID: messageUUID,
-			RoomID: roomId,
-			MsgType: req.MsgType,
-			Content: req.Content,
-			Status: &status,
-			AttachedObjectWorkshopID: req.WorkshopFolderId,
-			AttachedObjectPostID: req.PublicationPostId,
-		}
-
-		// Формируем список ответов
-		attachmentsCreating := make([]*responses.AttachmentUploadItem, 0, len(req.Attachments))
-
-		// Создаем список вложений
-		attachments := make([]*models.Attachment, 0, len(req.Attachments))
-
-		for _, item := range req.Attachments {
-			// Получаем публичный и статичный ключ для файла
-			key := fmt.Sprintf("%s/%s/%s%s", roomId, messageUUID, uuid.New(), s.s3.getExtensionFromMimeType(item.MimeType))
-			_, presignedUrl, err := s.s3.GenerateUploadUrls(ctx, key, item.MimeType)
-			if err != nil {
-				return nil, apperrors.ErrInternal
-			}
-			// Получаем публичный и статичный ключ для превью
-			keyPreview := fmt.Sprintf("%s/%s/%s%s", roomId, messageUUID, uuid.New(), ".jpeg")
-			_, presignedUrlPreview, err := s.s3.GenerateUploadUrls(ctx, keyPreview, "image/jpeg")
-			if err != nil {
-				return nil, apperrors.ErrInternal
-			}
-			attachId := uuid.New()
-			newAttach := &models.Attachment{
-				ID: attachId,
-				RoomID: roomId,
-				MessageID: messageUUID,
-				AttType: item.AttType,
-				S3Key: key,
-				PreviewS3Key: &keyPreview,
-				FileSizeBytes: item.FileSizeBytes,
-				Duration: item.Duration,
-			}
-
-			attachments = append(attachments, newAttach)
-
-			attachResponse := &responses.AttachmentUploadItem{
-				AttachmentID: attachId,
-				PresignedURL: presignedUrl,
-				PresignedPreviewURL: &presignedUrlPreview,
-			}
-
-			attachmentsCreating = append(attachmentsCreating, attachResponse)
-		}
-
-		err := s.repo.CreateMessageWithAttachments(ctx, newMessage, attachments)
-		if err != nil {
-			return nil, err
-		}
-
-		messageResponse := &responses.MessageCreateResponse{
-			MessageID: messageUUID,
-			Status: status,
-			UploadItems: attachmentsCreating,
-		}
-
-		return messageResponse, nil
-	} else {
-		return nil, apperrors.ErrInvalidInput
+	if req.Tags == nil {
+		req.Tags = make([]*models.Tag, 0)
 	}
+
+	// Проверяем, что каждый добавляемый тег создается для той же комнаты
+	for _, tag := range req.Tags {
+		if tag.RoomId != roomId {
+			return nil, apperrors.ErrAccess
+		}
+	}
+
+	switch req.MsgType {
+    case "standard":
+        if len(req.Attachments) > 7 {
+            return nil, apperrors.ErrInvalidInput // Слишком много файлов
+        }
+    case "voice_note", "video_note":
+        if len(req.Attachments) != 1 {
+            return nil, apperrors.ErrInvalidInput // Должен быть строго один файл
+        }
+    default:
+        return nil, apperrors.ErrInvalidInput
+    }
+
+    // Инициализация общих данных
+    messageUUID := uuid.New()
+    status := "sending"
+
+    newMessage := &models.Message{
+        ID:                       messageUUID,
+        RoomID:                   roomId,
+        MsgType:                  req.MsgType,
+        Content:                  req.Content,
+        Status:                  &status,
+        AttachedObjectWorkshopID: req.WorkshopFolderId,
+        AttachedObjectPostID:     req.PublicationPostId,
+    }
+
+    attachments := make([]*models.Attachment, 0, len(req.Attachments))
+    uploadItems := make([]*responses.AttachmentUploadItem, 0, len(req.Attachments))
+
+    //Общий цикл обработки вложений
+    for _, item := range req.Attachments {
+        attachId := uuid.New()
+        
+        // Генерация основного файла
+        ext := s.s3.getExtensionFromMimeType(item.MimeType)
+        key := fmt.Sprintf("%s/%s/%s%s", roomId, messageUUID, uuid.New(), ext)
+        _, presignedUrl, err := s.s3.GenerateUploadUrls(ctx, key, item.MimeType)
+        if err != nil {
+            return nil, apperrors.ErrInternal
+        }
+
+        newAttach := &models.Attachment{
+            ID:            attachId,
+            RoomID:        roomId,
+            MessageID:     messageUUID,
+            AttType:       item.AttType,
+            S3Key:         key,
+            FileSizeBytes: item.FileSizeBytes,
+            Duration:      item.Duration,
+        }
+
+        attachResponse := &responses.AttachmentUploadItem{
+            AttachmentID: attachId,
+            PresignedURL: presignedUrl,
+        }
+
+        // Логика превью (только для видео-заметок или стандартных медиа)
+        if req.MsgType == "video_note" || req.MsgType == "standard" {
+            keyPreview := fmt.Sprintf("%s/%s/%s.jpeg", roomId, messageUUID, uuid.New())
+            _, presignedUrlPreview, err := s.s3.GenerateUploadUrls(ctx, keyPreview, "image/jpeg")
+            if err != nil {
+                return nil, apperrors.ErrInternal
+            }
+            newAttach.PreviewS3Key = &keyPreview
+            attachResponse.PresignedPreviewURL = &presignedUrlPreview
+        }
+
+        attachments = append(attachments, newAttach)
+        uploadItems = append(uploadItems, attachResponse)
+    }
+
+    // Сохранение в БД
+    if err := s.repo.CreateMessageWithAttachments(ctx, newMessage, attachments, req.Tags); err != nil {
+        return nil, err
+    }
+
+    return &responses.MessageCreateResponse{
+        MessageID:   messageUUID,
+        Status:      status,
+        UploadItems: uploadItems,
+    }, nil
 }
 
 func (s *DiaryService) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingMessage) (*responses.UpdatingStatus, error) {
@@ -310,6 +196,12 @@ func (s *DiaryService) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID
         return nil, err
     }
 
+	// Получаем теги для сообщения
+	tags, err := s.repo.GetTagsByMessageIDs(ctx, []uuid.UUID{msg.ID})
+    if err != nil {
+        return nil, err
+    }
+
 	// Делаем полные ссылки s3
 	for idx, _ := range attachments {
 			if attachments[idx].PreviewS3Key != nil {
@@ -321,17 +213,23 @@ func (s *DiaryService) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID
 			attachments[idx].S3Key = fullURL
 		}
 
+	msgTags := tags[msg.ID]
+	if msgTags == nil {
+		msgTags = []*models.Tag{}
+	}
+	
     // Упаковываем в итоговую структуру
     return &responses.UpdatingStatus{
         Message: &responses.MessageResponse{
             Message:    msg,
             Attachment: attachments,
+			Tags: msgTags,
         },
     }, nil
 }
 
 func (s *DiaryService) CreateTag(ctx context.Context, req *requests.CreatingTag, roomId uuid.UUID) (*models.Tag, error) {
-	newTag := models.FromCreatingTag(req, roomId, uuid.New())
+	newTag := &models.Tag{Id: uuid.New(), RoomId: roomId, Name: req.Name, Color: req.Color}
 
 	err := s.repo.CreateTag(ctx, newTag)
 	if err != nil {

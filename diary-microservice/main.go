@@ -305,6 +305,8 @@ func main() {
 	e.PATCH("/tag/:tagId", app.UpdateTag)
 	e.DELETE("/tag/:tagId", app.DeleteTag)
 	e.GET("/tags/:roomId", app.GetTags)
+	// e.GET("messages/searchByTagName/:roomId", app.GetMessagesByTagName)
+	// e.GET("/messages/searchByContent/:roomId", app.GetMessagesByContent)
 
 	// TODO: Здесь будут роуты для WebSocket и API
 
