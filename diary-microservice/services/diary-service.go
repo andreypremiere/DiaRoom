@@ -330,6 +330,51 @@ func (s *DiaryService) UpdateMessageStatus(ctx context.Context, roomId uuid.UUID
     }, nil
 }
 
+func (s *DiaryService) CreateTag(ctx context.Context, req *requests.CreatingTag, roomId uuid.UUID) (*models.Tag, error) {
+	newTag := models.FromCreatingTag(req, roomId, uuid.New())
+
+	err := s.repo.CreateTag(ctx, newTag)
+	if err != nil {
+		return nil, err
+	}
+
+	return newTag, nil 
+}
+
+func (s *DiaryService) UpdateTag(ctx context.Context, req *requests.UpdatingTag, tagId uuid.UUID, roomId uuid.UUID) (*models.Tag, error) {
+    tag := &models.Tag{
+        Id:     tagId,
+        RoomId: roomId,
+        Name:   req.Name,
+        Color:  req.Color,
+    }
+
+    err := s.repo.UpdateTag(ctx, tag)
+    if err != nil {
+        return nil, err
+    }
+
+    return tag, nil
+}
+
+func (s *DiaryService) DeleteTag(ctx context.Context, tagId uuid.UUID, roomId uuid.UUID) error {
+    err := s.repo.DeleteTag(ctx, tagId, roomId)
+    if err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func (s *DiaryService) GetTags(ctx context.Context, roomId uuid.UUID) ([]*models.Tag, error) {
+	tags, err := s.repo.GetTags(ctx, roomId)
+	if err != nil {
+		return nil, err
+	}
+	
+	return tags, nil
+}
+
 func NewDiaryService(repo *repositories.DiaryRepository, s3 *S3Manager, redisClient *redis.Client) *DiaryService {
 	return &DiaryService{
 		repo:  repo,

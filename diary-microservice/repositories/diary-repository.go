@@ -204,6 +204,106 @@ func (r *DiaryRepository) UpdateMessageStatus(ctx context.Context, roomId uuid.U
 	return nil
 }
 
+func (r *DiaryRepository) CreateTag(ctx context.Context, newTag *models.Tag) error {
+	query := `
+		INSERT INTO tags (id, room_id, name, color)
+		VALUES ($1, $2, $3, $4)
+	`
+
+	_, err := r.db.Exec(ctx, query,
+		newTag.Id,
+		newTag.RoomId,
+		newTag.Name,
+		newTag.Color,
+	)
+
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	return nil
+}
+
+func (r *DiaryRepository) UpdateTag(ctx context.Context, tag *models.Tag) error {
+    query := `
+        UPDATE tags 
+        SET name = $1, color = $2 
+        WHERE id = $3 AND room_id = $4
+    `
+
+    result, err := r.db.Exec(ctx, query,
+        tag.Name,
+        tag.Color,
+        tag.Id,
+        tag.RoomId,
+    )
+
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound
+    }
+
+    return nil
+}
+
+func (r *DiaryRepository) DeleteTag(ctx context.Context, tagId uuid.UUID, roomId uuid.UUID) error {
+    query := `
+        DELETE FROM tags 
+        WHERE id = $1 AND room_id = $2
+    `
+
+    result, err := r.db.Exec(ctx, query, tagId, roomId)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound
+    }
+
+    return nil
+}
+
+func (r *DiaryRepository) GetTags(ctx context.Context, roomId uuid.UUID) ([]*models.Tag, error) {
+	query := `
+		SELECT id, room_id, name, color 
+		FROM tags 
+		WHERE room_id = $1
+		ORDER BY name ASC
+	`
+
+	rows, err := r.db.Query(ctx, query, roomId)
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	tags := []*models.Tag{}
+
+	for rows.Next() {
+		tag := &models.Tag{}
+		err := rows.Scan(
+			&tag.Id,
+			&tag.RoomId,
+			&tag.Name,
+			&tag.Color,
+		)
+		if err != nil {
+			return nil, r.parseError(err)
+		}
+		tags = append(tags, tag)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, r.parseError(err)
+	}
+
+	return tags, nil
+}
+
 func NewDiaryRepository(db *pgxpool.Pool) *DiaryRepository {
 	return &DiaryRepository{
 		db: db,

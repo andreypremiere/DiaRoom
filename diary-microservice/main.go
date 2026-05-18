@@ -145,6 +145,113 @@ func (a *App) GetMessages(c echo.Context) error {
 	return c.JSON(http.StatusOK, messages)
 }
 
+func (a *App) CreateTag(c echo.Context) error {
+	roomIdStr := c.Request().Header.Get("X-Room-ID")
+	if roomIdStr == "" {
+		return a.sendError(c, apperrors.ErrAccess)
+	}
+	roomId, err := uuid.Parse(roomIdStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	req := &requests.CreatingTag{}
+    
+    if err := c.Bind(req); err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput) 
+    }
+
+	newTag, err := a.service.CreateTag(c.Request().Context(), req, roomId)
+	if err != nil {
+		return a.sendError(c, err)
+	}
+
+	return c.JSON(http.StatusCreated, newTag)
+}
+
+func (a *App) UpdateTag(c echo.Context) error {
+	roomIdStr := c.Request().Header.Get("X-Room-ID")
+	if roomIdStr == "" {
+		return a.sendError(c, apperrors.ErrAccess)
+	}
+	roomId, err := uuid.Parse(roomIdStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	idStr := c.Param("tagId")
+
+    tagId, err := uuid.Parse(idStr)
+    if err != nil {
+        return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid uuid"})
+    }
+
+	req := &requests.UpdatingTag{}
+    
+    if err := c.Bind(req); err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput) 
+    }
+
+	updatedTag, err := a.service.UpdateTag(c.Request().Context(), req, tagId, roomId)
+	if err != nil {
+		return a.sendError(c, err)
+	}
+
+	return c.JSON(http.StatusCreated, updatedTag)
+}
+
+func (a *App) DeleteTag(c echo.Context) error {
+    roomIdStr := c.Request().Header.Get("X-Room-ID")
+    if roomIdStr == "" {
+        return a.sendError(c, apperrors.ErrAccess)
+    }
+    roomId, err := uuid.Parse(roomIdStr)
+    if err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput)
+    }
+
+    idStr := c.Param("tagId")
+    tagId, err := uuid.Parse(idStr)
+    if err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput)
+    }
+
+    err = a.service.DeleteTag(c.Request().Context(), tagId, roomId)
+    if err != nil {
+        return a.sendError(c, err)
+    }
+
+    return c.NoContent(http.StatusNoContent)
+}
+
+func (a *App) GetTags(c echo.Context) error {
+	roomIdStr := c.Request().Header.Get("X-Room-ID")
+    if roomIdStr == "" {
+        return a.sendError(c, apperrors.ErrAccess)
+    }
+    roomId, err := uuid.Parse(roomIdStr)
+    if err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput)
+    }
+
+	roomIdPathStr := c.Param("roomId")
+	roomIdPath, err := uuid.Parse(roomIdPathStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	if roomId != roomIdPath {
+		return a.sendError(c, apperrors.ErrAccess)
+	}
+
+	tags, err := a.service.GetTags(c.Request().Context(), roomId)
+	if err != nil {
+		return a.sendError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, tags)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -194,6 +301,10 @@ func main() {
 	e.POST("/createMessage", app.createMessage)
 	e.POST("/updateStatusMessage", app.updateStatusMessage)
 	e.GET("/messages/:roomId", app.GetMessages)
+	e.POST("/tag", app.CreateTag)
+	e.PATCH("/tag/:tagId", app.UpdateTag)
+	e.DELETE("/tag/:tagId", app.DeleteTag)
+	e.GET("/tags/:roomId", app.GetTags)
 
 	// TODO: Здесь будут роуты для WebSocket и API
 
