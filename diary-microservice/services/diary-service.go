@@ -273,6 +273,48 @@ func (s *DiaryService) GetTags(ctx context.Context, roomId uuid.UUID) ([]*models
 	return tags, nil
 }
 
+func (s *DiaryService) DeleteMessage(ctx context.Context, roomId uuid.UUID, messageId uuid.UUID) error {
+	// Проверка, что такое сообщение с таким roomId существует
+	message, err := s.repo.GetMessageByID(ctx, roomId, messageId)
+	if err != nil {
+		return err
+	}
+
+	// Собщение найдено
+	if message == nil {
+		return apperrors.ErrNotFound
+	}
+
+	// Ищем все вложения
+	attachments, err := s.repo.GetAttachmentsByMessageIDs(ctx, []uuid.UUID{message.ID})
+	if err != nil {
+		return err
+	}
+
+	if len(attachments) > 0 {
+		deletingKeys := make([]string, 0)
+
+		for _, item := range attachments {
+			if item.S3Key != "" {
+				deletingKeys = append(deletingKeys, item.S3Key)
+			}
+			if item.PreviewS3Key != nil && *item.PreviewS3Key != "" {
+				deletingKeys = append(deletingKeys, *item.PreviewS3Key)
+			}
+		}
+
+		err = s.s3.DeleteByKeys(ctx, deletingKeys) 
+		if err != nil {
+			return apperrors.ErrInternal
+		}
+	}
+
+	// Удаляем сообщение
+	err = s.repo.DeleteMessage(ctx, roomId, messageId)
+
+	return err
+}
+
 func NewDiaryService(repo *repositories.DiaryRepository, s3 *S3Manager, redisClient *redis.Client) *DiaryService {
 	return &DiaryService{
 		repo:  repo,

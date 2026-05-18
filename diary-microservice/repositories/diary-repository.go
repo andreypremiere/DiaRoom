@@ -371,6 +371,24 @@ func (r *DiaryRepository) GetTags(ctx context.Context, roomId uuid.UUID) ([]*mod
 	return tags, nil
 }
 
+func (r *DiaryRepository) DeleteMessage(ctx context.Context, roomId uuid.UUID, messageId uuid.UUID) error {
+    query := `
+        DELETE FROM messages 
+        WHERE id = $1 AND room_id = $2
+    `
+
+    result, err := r.db.Exec(ctx, query, messageId, roomId)
+    if err != nil {
+        return r.parseError(err)
+    }
+
+    if result.RowsAffected() == 0 {
+        return apperrors.ErrNotFound
+    }
+
+    return nil
+}
+
 func NewDiaryRepository(db *pgxpool.Pool) *DiaryRepository {
 	return &DiaryRepository{
 		db: db,

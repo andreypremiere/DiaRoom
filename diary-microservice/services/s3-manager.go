@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 type S3Manager struct {
@@ -77,4 +78,31 @@ func (s *S3Manager) GenerateUploadUrls(ctx context.Context, key string, mimeType
 	}
 
 	return publicUrl, presignedRequest.URL, nil
+}
+
+func (s *S3Manager) DeleteByKeys(ctx context.Context, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	var objectsToDelete []types.ObjectIdentifier
+	for _, key := range keys {
+		objectsToDelete = append(objectsToDelete, types.ObjectIdentifier{
+			Key: aws.String(key),
+		})
+	}
+
+	_, err := s.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+		Bucket: aws.String(s.bucketName),
+		Delete: &types.Delete{
+			Objects: objectsToDelete,
+			Quiet:   aws.Bool(true), 
+		},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

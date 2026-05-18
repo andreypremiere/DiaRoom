@@ -183,7 +183,7 @@ func (a *App) UpdateTag(c echo.Context) error {
 
     tagId, err := uuid.Parse(idStr)
     if err != nil {
-        return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid uuid"})
+        return a.sendError(c, apperrors.ErrInvalidInput)
     }
 
 	req := &requests.UpdatingTag{}
@@ -252,6 +252,32 @@ func (a *App) GetTags(c echo.Context) error {
 	return c.JSON(http.StatusOK, tags)
 }
 
+func (a *App) DeleteMessage(c echo.Context) error {
+	roomIdStr := c.Request().Header.Get("X-Room-ID")
+	if roomIdStr == "" {
+		return a.sendError(c, apperrors.ErrAccess)
+	}
+	roomId, err := uuid.Parse(roomIdStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	messageIdStr := c.Param("messageId")
+
+    messageId, err := uuid.Parse(messageIdStr)
+    if err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput)
+    }
+
+	err = a.service.DeleteMessage(c.Request().Context(), roomId, messageId)
+	if err != nil {
+		return a.sendError(c, err)
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -305,6 +331,7 @@ func main() {
 	e.PATCH("/tag/:tagId", app.UpdateTag)
 	e.DELETE("/tag/:tagId", app.DeleteTag)
 	e.GET("/tags/:roomId", app.GetTags)
+	e.DELETE("/message/:messageId", app.DeleteMessage)
 	// e.GET("messages/searchByTagName/:roomId", app.GetMessagesByTagName)
 	// e.GET("/messages/searchByContent/:roomId", app.GetMessagesByContent)
 
