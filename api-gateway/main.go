@@ -181,6 +181,9 @@ func main() {
 		"/diary/createMessage", 
 		"/diary/updateStatusMessage", 
 		"/diary/messages/[a-zA-Z0-9-]+",
+		"/diary/tag",
+		"/diary/tag/[a-zA-Z0-9-]+",
+		"/diary/tags/[a-zA-Z0-9-]+",
 	})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))
