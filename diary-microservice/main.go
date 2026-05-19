@@ -277,6 +277,43 @@ func (a *App) DeleteMessage(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+func (a *App) SearchMessages(c echo.Context) error {
+    roomIdHeaderStr := c.Request().Header.Get("X-Room-ID")
+    roomIdPathStr := c.Param("roomId")
+    
+    _, err := uuid.Parse(roomIdHeaderStr)
+    if err != nil {
+        return a.sendError(c, apperrors.ErrAccess)
+    }
+    
+    roomIdPath, err := uuid.Parse(roomIdPathStr)
+    if err != nil {
+        return a.sendError(c, apperrors.ErrInvalidInput)
+    }
+    
+    messageText := c.QueryParam("messageText")
+    tagText := c.QueryParam("tagText")
+	pageStr := c.QueryParam("page")
+	limitStr := c.QueryParam("limit")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		return a.sendError(c, apperrors.ErrInvalidInput)
+	}
+
+    results, err := a.service.SearchMessages(c.Request().Context(), roomIdPath, messageText, tagText, page, limit)
+    if err != nil {
+        return a.sendError(c, err)
+    }
+
+    return c.JSON(http.StatusOK, results)
+}
+
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -332,6 +369,7 @@ func main() {
 	e.DELETE("/tag/:tagId", app.DeleteTag)
 	e.GET("/tags/:roomId", app.GetTags)
 	e.DELETE("/message/:messageId", app.DeleteMessage)
+	e.GET("/search-messages/:roomId", app.SearchMessages)
 	// e.GET("messages/searchByTagName/:roomId", app.GetMessagesByTagName)
 	// e.GET("/messages/searchByContent/:roomId", app.GetMessagesByContent)
 

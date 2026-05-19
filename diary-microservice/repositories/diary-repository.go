@@ -389,6 +389,93 @@ func (r *DiaryRepository) DeleteMessage(ctx context.Context, roomId uuid.UUID, m
     return nil
 }
 
+func (r *DiaryRepository) GetMessagesByTagSubstring(ctx context.Context, roomId uuid.UUID, namePart string, limit int, offset int) ([]*models.Message, error) {
+    query := `
+        SELECT DISTINCT m.id, m.room_id, m.msg_type, m.content, 
+                        m.attached_object_workshop_id, m.attached_object_post_id,
+                        m.created_at, m.updated_at
+        FROM messages m
+        JOIN message_tags mt ON m.id = mt.message_id
+        JOIN tags t ON mt.tag_id = t.id
+        WHERE m.room_id = $1 
+          AND t.name ILIKE $2
+        ORDER BY m.created_at DESC
+		LIMIT $3 OFFSET $4
+    `
+
+    rows, err := r.db.Query(ctx, query, roomId, "%"+namePart+"%", limit, offset)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    messages := make([]*models.Message, 0)
+    for rows.Next() {
+        m := new(models.Message)
+        err := rows.Scan(
+            &m.ID,
+            &m.RoomID,
+            &m.MsgType,
+            &m.Content,
+            &m.AttachedObjectWorkshopID,
+            &m.AttachedObjectPostID,
+            &m.CreatedAt,
+            &m.UpdatedAt,
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        messages = append(messages, m)
+    }
+
+    return messages, nil
+}
+
+func (r *DiaryRepository) GetMessagesByContentSubstring(ctx context.Context, roomId uuid.UUID, textPart string, limit, offset int) ([]*models.Message, error) {
+    query := `
+        SELECT id, room_id, msg_type, content, 
+               attached_object_workshop_id, attached_object_post_id,
+               created_at, updated_at
+        FROM messages
+        WHERE room_id = $1 
+          AND content ILIKE $2
+        ORDER BY created_at DESC
+        LIMIT $3 OFFSET $4
+    `
+
+    rows, err := r.db.Query(ctx, query, roomId, "%"+textPart+"%", limit, offset)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    messages := make([]*models.Message, 0)
+
+    for rows.Next() {
+        m := new(models.Message)
+        err := rows.Scan(
+            &m.ID,
+            &m.RoomID,
+            &m.MsgType,
+            &m.Content,
+            &m.AttachedObjectWorkshopID,
+            &m.AttachedObjectPostID,
+            &m.CreatedAt,
+            &m.UpdatedAt,
+        )
+        if err != nil {
+            return nil, r.parseError(err)
+        }
+        messages = append(messages, m)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return messages, nil
+}
+
 func NewDiaryRepository(db *pgxpool.Pool) *DiaryRepository {
 	return &DiaryRepository{
 		db: db,

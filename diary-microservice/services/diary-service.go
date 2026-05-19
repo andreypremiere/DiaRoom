@@ -19,16 +19,7 @@ type DiaryService struct {
 	redis *redis.Client
 }
 
-func (s *DiaryService) GetMessages(ctx context.Context, roomID uuid.UUID, limit, offset int) (*responses.GettingMessages, error) {
-	messages, err := s.repo.GetMessagesByRoom(ctx, roomID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(messages) == 0 {
-		return &responses.GettingMessages{Messages: []*responses.MessageResponse{}}, nil
-	}
-
+func (s *DiaryService) getResponseMessagesByMessages(ctx context.Context, messages []*models.Message) (*responses.GettingMessages, error) {
 	msgIDs := make([]uuid.UUID, len(messages))
 	for i, m := range messages {
 		msgIDs[i] = m.ID
@@ -79,6 +70,19 @@ func (s *DiaryService) GetMessages(ctx context.Context, roomID uuid.UUID, limit,
 	}
 
 	return result, nil
+}
+
+func (s *DiaryService) GetMessages(ctx context.Context, roomID uuid.UUID, limit, offset int) (*responses.GettingMessages, error) {
+	messages, err := s.repo.GetMessagesByRoom(ctx, roomID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(messages) == 0 {
+		return &responses.GettingMessages{Messages: []*responses.MessageResponse{}}, nil
+	}
+
+	return s.getResponseMessagesByMessages(ctx, messages)
 }
 
 func (s *DiaryService) CreateMessage(ctx context.Context, roomId uuid.UUID, req *requests.MessageCreateRequest) (*responses.MessageCreateResponse, error) {
@@ -313,6 +317,45 @@ func (s *DiaryService) DeleteMessage(ctx context.Context, roomId uuid.UUID, mess
 	err = s.repo.DeleteMessage(ctx, roomId, messageId)
 
 	return err
+}
+
+func (s *DiaryService) SearchMessages(ctx context.Context, roomId uuid.UUID, messageText string, tagText string, page int, limit int) (*responses.GettingMessages, error) {
+	if limit < 20 && limit > 100 {
+		limit = 20
+	}
+	if page < 0 {
+		page = 0
+	}
+
+	offset := page * limit
+
+	if (messageText == "" && tagText == "") {
+		return nil, apperrors.ErrInvalidInput
+	}
+
+	var messages []*models.Message = make([]*models.Message, 0)
+
+	// Сообщения по вхождению тега
+	if (tagText != "") {
+		foundMessages, err := s.repo.GetMessagesByTagSubstring(ctx, roomId, tagText, limit, offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(foundMessages) > 0 {
+			messages = append(messages, foundMessages...)
+		}
+	// Сообщения по тексту
+	} else if (messageText != "") {
+		foundMessages, err := s.repo.GetMessagesByContentSubstring(ctx, roomId, messageText, limit, offset)
+		if err != nil {
+			return nil, err
+		}
+		if len(foundMessages) > 0 {
+			messages = append(messages, foundMessages...)
+		}
+	}
+
+	return s.getResponseMessagesByMessages(ctx, messages)
 }
 
 func NewDiaryService(repo *repositories.DiaryRepository, s3 *S3Manager, redisClient *redis.Client) *DiaryService {
