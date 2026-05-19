@@ -443,6 +443,44 @@ func (a *App) DeletePostHandler(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusNoContent)
 }
 
+func (a *App) SearchPosts(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+    
+    _, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+	query := r.URL.Query()
+
+	page, err := strconv.Atoi(query.Get("page"))
+	if err != nil || page < 0 {
+		page = 0
+	}
+
+	limit, err := strconv.Atoi(query.Get("limit"))
+	if err != nil || limit <= 0 {
+		limit = 20
+	}
+
+	value := query.Get("value")
+
+	posts, err := a.service.SearchPosts(r.Context(), page, limit, value)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(posts)
+}
+
 // Воркер для просмотров
 func (a *App) StartViewSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Minute)
@@ -502,6 +540,7 @@ func main() {
     mux.HandleFunc("GET /isLiked/{postId}", app.handleCheckLikeStatus)
 	mux.HandleFunc("GET /likers/{postId}", app.GetPostLikersHandler)
 	mux.HandleFunc("DELETE /deletePost/{postId}", app.DeletePostHandler)
+	mux.HandleFunc("GET /search", app.SearchPosts)
 
 	server := &http.Server{
 		Addr:    ":81",

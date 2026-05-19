@@ -148,7 +148,8 @@ func main() {
 		"/post/isLiked/[a-zA-Z0-9-]+",
 		"/post/likers/[a-zA-Z0-9-]+",
 		"/post/deletePost/[a-zA-Z0-9-]+",
-	})
+		"/post/search",
+	})	
 
 	gateway.AddRoute("/account", "http://account-microservice:81", []string{
 		"/account/updateRoom", 

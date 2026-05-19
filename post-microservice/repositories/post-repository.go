@@ -38,6 +38,7 @@ type PostRepositoryInter interface {
 	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
 	GetPostLikerIds(ctx context.Context, postId uuid.UUID, limit, offset int) ([]uuid.UUID, error)
 	DeletePost(ctx context.Context, postId uuid.UUID) error
+    SearchPosts(ctx context.Context, limit int, offset int, value string) ([]responses.PostInfo, error)
 }
 
 type PostRepository struct {
@@ -351,6 +352,59 @@ func (r *PostRepository) UpdatePostPreviewURL(ctx context.Context, postID uuid.U
         WHERE id = $2
     `, previewURL, postID)
 	return r.parseError(err)
+}
+
+func (r *PostRepository) SearchPosts(ctx context.Context, limit int, offset int, value string) ([]responses.PostInfo, error) {
+	query := `
+		SELECT 
+			p.id, 
+			p.room_id, 
+			p.preview_url, 
+			p.category_slug, 
+			p.canvas_id, 
+			p.title, 
+			p.views_count, 
+			p.likes_count
+		FROM posts p
+		WHERE p.status = 'published' 
+          AND p.ai_check_status = 'passed'
+          AND p.canvas_id IS NOT NULL
+          AND p.title ILIKE $3
+		ORDER BY p.published_at DESC, p.id DESC
+        LIMIT $1 OFFSET $2;
+	`
+
+	rows, err := r.db.Query(ctx, query, limit, offset, "%"+value+"%")
+	if err != nil {
+		return nil, r.parseError(err)
+	}
+	defer rows.Close()
+
+	var posts []responses.PostInfo
+
+	for rows.Next() {
+		var p responses.PostInfo
+		err := rows.Scan(
+			&p.Id,
+			&p.RoomId,
+			&p.PreviewUrl,
+			&p.Category,
+			&p.CanvasId,
+			&p.Title,
+			&p.ViewsCount,
+			&p.LikesCount,
+		)
+		if err != nil {
+			return nil, r.parseError(err)
+		}
+		posts = append(posts, p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, r.parseError(err)
+	}
+
+	return posts, nil
 }
 
 func (r *PostRepository) PushPostToQueue(ctx context.Context, postID uuid.UUID) error {

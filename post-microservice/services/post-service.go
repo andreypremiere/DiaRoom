@@ -38,6 +38,7 @@ type PostServiceInter interface {
 	CheckLikeStatus(ctx context.Context, postId, roomId uuid.UUID) (bool, error)
 	GetPostLikers(ctx context.Context, postId uuid.UUID, page int, limit int) ([]responses.Room, error)
 	DeletePost(ctx context.Context, roomId uuid.UUID, postId uuid.UUID) (error)
+	SearchPosts(ctx context.Context, page int, limit int, value string) ([]responses.Post, error)
 }
 
 type PostService struct {
@@ -228,22 +229,7 @@ func (s *PostService) GetPostForShowing(ctx context.Context, postId uuid.UUID) (
 	return post, nil 
 }
 
-func (s *PostService) GetAllPosts(ctx context.Context, page int, limit int) ([]responses.Post, error) {
-	offset := page * limit
-
-	postsInfo, err := s.repo.GetAllPosts(ctx, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(postsInfo) == 0 {
-		return []responses.Post{}, nil
-	}
-
-	for i := range postsInfo {
-		postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
-	}
-
+func (s *PostService) getResponsesByPosts(ctx context.Context, postsInfo []responses.PostInfo) ([]responses.Post, error) {
 	roomIDs := make([]uuid.UUID, 0)
 	seen := make(map[uuid.UUID]bool)
 	for _, p := range postsInfo {
@@ -267,6 +253,48 @@ func (s *PostService) GetAllPosts(ctx context.Context, page int, limit int) ([]r
 	}
 
 	return result, nil
+}
+
+func (s *PostService) GetAllPosts(ctx context.Context, page int, limit int) ([]responses.Post, error) {
+	offset := page * limit
+
+	postsInfo, err := s.repo.GetAllPosts(ctx, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(postsInfo) == 0 {
+		return []responses.Post{}, nil
+	}
+
+	for i := range postsInfo {
+		postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
+	}
+
+	return s.getResponsesByPosts(ctx, postsInfo)
+}
+
+func (s *PostService) SearchPosts(ctx context.Context, page int, limit int, value string) ([]responses.Post, error) {
+	offset := page * limit
+
+	if value == "" {
+		return make([]responses.Post, 0), nil
+	}
+
+	postsInfo, err := s.repo.SearchPosts(ctx, limit, offset, value)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(postsInfo) == 0 {
+		return []responses.Post{}, nil
+	}
+
+	for i := range postsInfo {
+		postsInfo[i].PreviewUrl = fmt.Sprintf("https://storage.yandexcloud.net/%s", postsInfo[i].PreviewUrl)
+	}
+
+	return s.getResponsesByPosts(ctx, postsInfo)
 }
 
 func (s *PostService) UpdateStatusUploaded(ctx context.Context, postID uuid.UUID) error {
