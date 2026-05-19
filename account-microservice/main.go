@@ -620,6 +620,43 @@ func (a *App) GetFollowingHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (a *App) SearchRooms(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+    
+    _, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+	query := r.URL.Query()
+
+	page, err := strconv.Atoi(query.Get("page"))
+	if err != nil || page < 0 {
+		page = 0
+	}
+
+	limit, err := strconv.Atoi(query.Get("limit"))
+	if err != nil || limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	value := query.Get("value")
+
+	rooms, err := a.accountService.SearchRooms(r.Context(), page, limit, value)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(rooms)
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -702,6 +739,7 @@ func main() {
     mux.HandleFunc("GET /followers/{roomId}", app.GetFollowersHandler)
     mux.HandleFunc("GET /following/{roomId}", app.GetFollowingHandler)
     mux.HandleFunc("POST /setConfigured", app.SetConfiguredHandler)
+    mux.HandleFunc("GET /search", app.SearchRooms)
 
     //Внутренние
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)

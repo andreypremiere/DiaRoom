@@ -160,6 +160,7 @@ func main() {
 		"/account/followers/[a-zA-Z0-9-]+",
 		"/account/following/[a-zA-Z0-9-]+",
 		"/account/setConfigured",
+		"/account/search",
 	})
 
 	gateway.AddRoute("/workshop", "http://workshop-microservice:81", []string{

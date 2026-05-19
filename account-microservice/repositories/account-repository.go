@@ -560,6 +560,51 @@ func (ar *AccountRepository) GetUserEmailByID(ctx context.Context, userID uuid.U
 	return &user, nil
 }
 
+func (r *AccountRepository) SearchRooms(ctx context.Context, limit, offset int, value string) ([]*models.Room, error) {
+    pattern := "%" + value + "%"
+
+    query := `
+        SELECT id, user_id, room_name, room_unique_id, avatar_url, background_url, bio, settings, followers_count, following_count, created_at 
+        FROM rooms 
+        WHERE room_unique_id ILIKE $1 OR room_name ILIKE $1 
+        ORDER BY created_at DESC 
+        LIMIT $2 OFFSET $3`
+
+    rows, err := r.poolPg.Query(ctx, query, pattern, limit, offset)
+    if err != nil {
+        return nil, r.parseError(err)
+    }
+    defer rows.Close()
+
+    rooms := make([]*models.Room, 0)
+    for rows.Next() {
+        var room models.Room
+        err := rows.Scan(
+            &room.ID,
+            &room.UserID,
+            &room.RoomName,
+            &room.RoomUniqueID,
+            &room.AvatarURL,
+            &room.BackgroundURL,
+            &room.Bio,
+            &room.Settings,
+            &room.FollowersCount,
+            &room.FollowingCount,
+            &room.CreatedAt,
+        )
+        if err != nil {
+            return nil, err
+        }
+        rooms = append(rooms, &room)
+    }
+
+    if err = rows.Err(); err != nil {
+        return nil, r.parseError(err)
+    }
+
+    return rooms, nil
+}
+
 func NewAccountRepository(
 	poolPg *pgxpool.Pool,
 	redisClient *redis.Client,

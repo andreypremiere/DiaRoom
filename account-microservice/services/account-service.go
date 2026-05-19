@@ -341,6 +341,32 @@ func (as *AccountService) RepeatSendingCode(ctx context.Context, userID uuid.UUI
 	return nil
 }
 
+func (as *AccountService) SearchRooms(ctx context.Context, page int, limit int, value string) (*responses.FoundRooms, error) {
+	offset := limit * page
+
+	rooms, err := as.accountRepo.SearchRooms(ctx, limit, offset, value)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(rooms) == 0 {
+		return &responses.FoundRooms{Rooms: make([]*responses.RoomInfoExpanded, 0)}, nil
+	}
+
+	roomsList := make([]*responses.RoomInfoExpanded, 0, len(rooms))
+
+	for _, item := range rooms {
+		roomsList = append(roomsList, &responses.RoomInfoExpanded{
+			Id: item.ID,
+			RoomUniqueId: item.RoomUniqueID,
+			Nickname: item.RoomName,
+			AvatarURL: as.s3Manager.FormatFullURL(item.AvatarURL),
+		})
+	}
+
+	return &responses.FoundRooms{Rooms: roomsList}, nil
+}
+
 func NewAccountService(
 	accountRepo *repositories.AccountRepository,
 	emailProvider *utils.MailService,
