@@ -125,8 +125,8 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, targetPrefix)
-	if r.URL.Path == "" {
-		r.URL.Path = "/"
+	if r.URL.Path == "" || r.URL.Path[0] != '/' {
+		r.URL.Path = "/" + r.URL.Path
 	}
 
 	proxy.ServeHTTP(lrw, r)
@@ -189,6 +189,8 @@ func main() {
 		"/diary/message/[a-zA-Z0-9-]+",
 		"/diary/search-messages/[a-zA-Z0-9-]+",
 	})
+
+	gateway.AddRoute("/", "http://lending-microservice:81", []string{})
 
 	log.Fatal(http.ListenAndServe(":80", gateway))
 }

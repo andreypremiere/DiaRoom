@@ -78,6 +78,18 @@ services:
     networks:
       - backend-application
 
+  lending-microservice:
+    build: ./lending-microservice
+    container_name: lending-microservice
+    env_file:
+      - .env
+    ports:
+      - "8086:81"
+    volumes:
+      - ./lending-microservice:/app
+    networks:
+      - backend-application
+
   postgresql-accounts:
     image: postgres:18.2-alpine3.23
     container_name: postgresql-accounts
@@ -91,6 +103,8 @@ services:
       - ./postgresql-accounts:/var/lib/postgresql
     networks:
       - backend-application
+
+  
 
   postgresql-posts:
     image: postgres:18.2-alpine3.23
