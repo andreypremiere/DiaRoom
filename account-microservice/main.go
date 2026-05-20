@@ -677,6 +677,153 @@ func (a *App) SearchRooms(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(rooms)
 }
 
+func (a *App) UpdateAvatar(w http.ResponseWriter, r *http.Request) {
+    roomIDStr := r.Header.Get("X-Room-ID")
+    if roomIDStr == "" {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+    
+    roomId, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInternal)
+        return
+    }
+
+    var req *requests.UpdatingAvatarRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    response, err := a.accountService.UpdateAvatar(r.Context(), roomId, req)
+    if err != nil {
+        a.sendError(w, err)
+        return 
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+func (a *App) UpdateRoomUniqueId(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomId, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInternal)
+		return
+	}
+
+	var req *requests.UpdatingTextFieldRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	err = a.accountService.UpdateRoomUniqueId(r.Context(), roomId, req)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) UpdateBackground(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomId, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInternal)
+		return
+	}
+
+	var req *requests.UpdatingBackgroundRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	response, err := a.accountService.UpdateBackground(r.Context(), roomId, req)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+func (a *App) UpdateRoomName(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomId, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInternal)
+		return
+	}
+
+	var req *requests.UpdatingTextFieldRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	err = a.accountService.UpdateRoomName(r.Context(), roomId, req)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *App) UpdateRoomBio(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomId, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInternal)
+		return
+	}
+
+	var req *requests.UpdatingTextFieldRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	err = a.accountService.UpdateRoomBio(r.Context(), roomId, req)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
@@ -760,6 +907,12 @@ func main() {
     mux.HandleFunc("GET /following/{roomId}", app.GetFollowingHandler)
     mux.HandleFunc("POST /setConfigured", app.SetConfiguredHandler)
     mux.HandleFunc("GET /search", app.SearchRooms)
+    mux.HandleFunc("POST /update/avatar", app.UpdateAvatar)
+    mux.HandleFunc("POST /update/background", app.UpdateBackground)
+    mux.HandleFunc("POST /update/roomUniqueId", app.UpdateRoomUniqueId)
+    mux.HandleFunc("POST /update/roomName", app.UpdateRoomName)
+    mux.HandleFunc("POST /update/bio", app.UpdateRoomBio)
+    // mux.HandleFunc("POST /update/categories", app.UpdateCategories)
 
     //Внутренние
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)

@@ -21,6 +21,67 @@ type AccountRepository struct {
 	redisClient *redis.Client
 }
 
+func (r *AccountRepository) UpdateRoomBio(ctx context.Context, roomID uuid.UUID, bio string) error {
+	query := `UPDATE rooms SET bio = $1 WHERE id = $2`
+
+	_, err := r.poolPg.Exec(ctx, query, bio, roomID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *AccountRepository) UpdateRoomName(ctx context.Context, roomID uuid.UUID, name string) error {
+	query := `UPDATE rooms SET room_name = $1 WHERE id = $2`
+
+	_, err := r.poolPg.Exec(ctx, query, name, roomID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *AccountRepository) UpdateRoomUniqueId(ctx context.Context, roomID uuid.UUID, uniqueID string) error {
+	query := `UPDATE rooms SET room_unique_id = $1 WHERE id = $2`
+
+	_, err := r.poolPg.Exec(ctx, query, uniqueID, roomID)
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	return nil
+}
+
+func (r *AccountRepository) GetBackgroundPath(ctx context.Context, roomID uuid.UUID) (string, error) {
+	var backgroundPath *string
+
+	query := `SELECT background_url FROM rooms WHERE id = $1`
+
+	err := r.poolPg.QueryRow(ctx, query, roomID).Scan(&backgroundPath)
+	if err != nil {
+		return "", r.parseError(err)
+	}
+
+	if backgroundPath == nil {
+		return "", nil
+	}
+
+	return *backgroundPath, nil
+}
+
+func (r *AccountRepository) UpdateBackgroundPath(ctx context.Context, roomID uuid.UUID, shortPath string) error {
+	query := `UPDATE rooms SET background_url = $1 WHERE id = $2`
+
+	_, err := r.poolPg.Exec(ctx, query, shortPath, roomID)
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	return nil
+}
+
 func (r *AccountRepository) GetFollowers(ctx context.Context, roomId uuid.UUID, limit, offset int) ([]responses.RoomInfo, error) {
 	query := `
 		SELECT 
@@ -603,6 +664,34 @@ func (r *AccountRepository) SearchRooms(ctx context.Context, limit, offset int, 
     }
 
     return rooms, nil
+}
+
+func (r *AccountRepository) GetAvatarPath(ctx context.Context, roomID uuid.UUID) (string, error) {
+	var avatarPath *string 
+	
+	query := `SELECT avatar_url FROM rooms WHERE id = $1`
+	
+	err := r.poolPg.QueryRow(ctx, query, roomID).Scan(&avatarPath)
+	if err != nil {
+		return "", r.parseError(err)
+	}
+	
+	if avatarPath == nil {
+		return "", nil
+	}
+	
+	return *avatarPath, nil
+}
+
+func (r *AccountRepository) UpdateAvatarPath(ctx context.Context, roomID uuid.UUID, shortPath string) error {
+	query := `UPDATE rooms SET avatar_url = $1 WHERE id = $2`
+	
+	_, err := r.poolPg.Exec(ctx, query, shortPath, roomID)
+	if err != nil {
+		return r.parseError(err)
+	}
+	
+	return nil
 }
 
 func NewAccountRepository(

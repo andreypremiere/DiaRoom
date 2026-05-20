@@ -85,3 +85,25 @@ func (s *S3Manager) GenerateUploadContext(ctx context.Context, roomId, filename 
 
 	return presignedReq.URL, staticPath, nil
 }
+
+func (s *S3Manager) GetPresignedUploadURLByPath(ctx context.Context, shortPath string, expires time.Duration) (string, error) {
+	// shortPath имеет вид "bucket/roomId/fileId.ext"
+	prefix := s.bucket + "/"
+	if len(shortPath) <= len(prefix) {
+		return "", fmt.Errorf("invalid short path format")
+	}
+	
+	key := shortPath[len(prefix):] // Извлекаем "roomId/fileId.ext"
+
+	request, err := s.presigner.PresignPutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}, func(opts *s3.PresignOptions) {
+		opts.Expires = expires
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to sign existing key request: %w", err)
+	}
+
+	return request.URL, nil
+}

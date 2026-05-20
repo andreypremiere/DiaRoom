@@ -9,10 +9,18 @@ import (
 	"account-microservice/utils"
 	"context"
 	"fmt"
+	"mime"
+	"regexp"
 	"time"
+	"unicode/utf8"
 
 	"github.com/andreypremiere/jwtmanager"
 	"github.com/google/uuid"
+)
+
+var (
+	roomIDRegexLen1 = regexp.MustCompile(`^[a-zA-Z]$`)
+	roomIDRegex     = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*[a-zA-Z0-9]$`)
 )
 
 type AccountService struct {
@@ -21,6 +29,173 @@ type AccountService struct {
 	passHasher    *utils.PasswordHasher
 	jwtManager    *jwtmanager.JWTManager
 	s3Manager     *S3Manager
+}
+
+func (as *AccountService) UpdateRoomBio(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingTextFieldRequest) error {
+	count := utf8.RuneCountInString(req.Value)
+
+	if count > 1000 {
+		return apperrors.ErrInvalidInput
+	}
+
+	err := as.accountRepo.UpdateRoomBio(ctx, roomId, req.Value)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (as *AccountService) UpdateRoomName(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingTextFieldRequest) error {
+	count := utf8.RuneCountInString(req.Value)
+
+	if count == 0 {
+		return apperrors.ErrInvalidInput
+	}
+
+	if count > 100 {
+		return apperrors.ErrInvalidInput
+	}
+
+	return as.accountRepo.UpdateRoomName(ctx, roomId, req.Value)
+}
+
+func (as *AccountService) validateRoomUniqueId(input string) error {
+	inputLength := utf8.RuneCountInString(input)
+
+	if inputLength == 0 {
+		return apperrors.ErrInvalidInput
+	}
+
+	if inputLength > 100 {
+		return apperrors.ErrInvalidInput
+	}
+
+	if inputLength == 1 {
+		if !roomIDRegexLen1.MatchString(input) {
+			return apperrors.ErrInvalidInput
+		}
+		return nil
+	}
+
+	if !roomIDRegex.MatchString(input) {
+		return apperrors.ErrInvalidInput
+	}
+
+	return nil
+}
+
+func (as *AccountService) UpdateRoomUniqueId(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingTextFieldRequest) error {
+	
+	err := as.validateRoomUniqueId(req.Value)
+	if err != nil {
+		return err
+	}
+
+	err = as.accountRepo.UpdateRoomUniqueId(ctx, roomId, req.Value)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (as *AccountService) UpdateBackground(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingBackgroundRequest) (*responses.UpdatingBackgroundResponse, error) {
+	// Ищем текущий путь фона в БД
+	currentShortPath, err := as.accountRepo.GetBackgroundPath(ctx, roomId)
+	if err != nil {
+		return nil, err
+	}
+
+	var uploadURL string
+	var targetShortPath string
+
+	// Если фон уже есть — переиспользуем ключ для перезаписи
+	if currentShortPath != "" {
+		targetShortPath = currentShortPath
+		uploadURL, err = as.s3Manager.GetPresignedUploadURLByPath(ctx, targetShortPath, 15*time.Minute)
+		if err != nil {
+			return nil, apperrors.ErrInternal
+		}
+	} else {
+		// Если фона нет — генерируем новое имя файла по MIME-типу
+		extensions, err := mime.ExtensionsByType(req.MimeType)
+		var ext string
+
+		if err == nil && len(extensions) > 0 {
+			ext = extensions[0]
+		} else {
+			ext = ".jpg"
+		}
+		fileId := uuid.New().String()
+
+		// Генерируем новую ссылку для загрузки
+		uploadURL, targetShortPath, err = as.s3Manager.GetPresignedUploadURL(ctx, roomId.String(), fileId, ext, 15*time.Minute)
+		if err != nil {
+			return nil, apperrors.ErrInternal
+		}
+
+		// Сохраняем новый путь в базу данных
+		err = as.accountRepo.UpdateBackgroundPath(ctx, roomId, targetShortPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	//  Формируем публичную ссылку для отображения
+	publicURL := as.s3Manager.FormatFullURL(targetShortPath)
+
+	return &responses.UpdatingBackgroundResponse{
+		UploadURL: uploadURL,
+		PublicURL: publicURL,
+	}, nil
+}
+
+func (as *AccountService) UpdateAvatar(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingAvatarRequest) (*responses.UpdatingAvatarResponse, error) {
+	currentShortPath, err := as.accountRepo.GetAvatarPath(ctx, roomId)
+	if err != nil {
+		return nil, err
+	}
+
+	var uploadURL string
+	var targetShortPath string
+
+	// Проверяем, существует ли уже ключ в хранилище
+	if currentShortPath != "" {
+		// Ключ есть! Генерируем PUT-ссылку для перезаписи старого файла
+		targetShortPath = currentShortPath
+		uploadURL, err = as.s3Manager.GetPresignedUploadURLByPath(ctx, targetShortPath, 15*time.Minute)
+		if err != nil {
+			return nil, apperrors.ErrInternal
+		}
+	} else {
+		extensions, err := mime.ExtensionsByType(req.MimeType)
+		var ext string
+
+		if err == nil && len(extensions) > 0 {
+			ext = extensions[0] 
+		} else {
+			ext = ".jpg"
+		}
+		fileId := uuid.New().String()
+
+		uploadURL, targetShortPath, err = as.s3Manager.GetPresignedUploadURL(ctx, roomId.String(), fileId, ext, 15*time.Minute)
+		if err != nil {
+			return nil, apperrors.ErrInternal
+		}
+
+		err = as.accountRepo.UpdateAvatarPath(ctx, roomId, targetShortPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	publicURL := as.s3Manager.FormatFullURL(targetShortPath)
+
+	return &responses.UpdatingAvatarResponse{
+		UploadURL: uploadURL,
+		PublicURL: publicURL,
+	}, nil
 }
 
 func (as *AccountService) GetRoomFollowers(ctx context.Context, roomId uuid.UUID, page int, limit int) ([]responses.RoomInfo, error) {
@@ -87,38 +262,38 @@ func (as *AccountService) GetRoomInfo(context context.Context, id uuid.UUID) (*r
 }
 
 func (s *AccountService) CheckSubscription(ctx context.Context, followerId, followingId uuid.UUID) (bool, error) {
-    isFollowed, err := s.accountRepo.CheckSubscription(ctx, followerId, followingId)
-    if err != nil {
-        return false, err
-    }
-    return isFollowed, nil
+	isFollowed, err := s.accountRepo.CheckSubscription(ctx, followerId, followingId)
+	if err != nil {
+		return false, err
+	}
+	return isFollowed, nil
 }
 
 func (s *AccountService) Follow(ctx context.Context, followerId, followingId uuid.UUID) error {
 
-    err := s.accountRepo.AddSubscription(ctx, followerId, followingId)
-    if err != nil {
-        return err
-    }
-    return nil
+	err := s.accountRepo.AddSubscription(ctx, followerId, followingId)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *AccountService) Unfollow(ctx context.Context, followerId, followingId uuid.UUID) error {
-    err := s.accountRepo.RemoveSubscription(ctx, followerId, followingId)
-    if err != nil {
-        return err
-    }
-    return nil
+	err := s.accountRepo.RemoveSubscription(ctx, followerId, followingId)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *AccountService) SetConfigured(ctx context.Context, userID uuid.UUID) error {
-    
-    err := s.accountRepo.SetConfigured(ctx, userID)
-    if err != nil {
-        return err
-    }
-    
-    return nil
+
+	err := s.accountRepo.SetConfigured(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (as *AccountService) UpdateRoom(context context.Context, roomId uuid.UUID, request *requests.UpdateRoomRequest) (*responses.UpdateRoomResponse, error) {
@@ -357,10 +532,10 @@ func (as *AccountService) SearchRooms(ctx context.Context, page int, limit int, 
 
 	for _, item := range rooms {
 		roomsList = append(roomsList, &responses.RoomInfoExpanded{
-			Id: item.ID,
+			Id:           item.ID,
 			RoomUniqueId: item.RoomUniqueID,
-			Nickname: item.RoomName,
-			AvatarURL: as.s3Manager.FormatFullURL(item.AvatarURL),
+			Nickname:     item.RoomName,
+			AvatarURL:    as.s3Manager.FormatFullURL(item.AvatarURL),
 		})
 	}
 
