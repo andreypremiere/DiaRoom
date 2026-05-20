@@ -85,6 +85,12 @@ VALUES
 ON CONFLICT (slug)
 DO UPDATE SET name = EXCLUDED.name;
 
+INSERT INTO categories (slug, name) VALUES
+('cars', 'Автомобили'),
+('gamedev', 'Игры'),
+('podcasts', 'Подкасты');
+
+
 CREATE TABLE IF NOT EXISTS subscriptions (
     -- Кто подписывается
     follower_id UUID NOT NULL,

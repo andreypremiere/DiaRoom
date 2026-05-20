@@ -84,12 +84,15 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var proxy *httputil.ReverseProxy
 
 	for prefix, prx := range p.targets {
-		if strings.HasPrefix(r.URL.Path, prefix) {
-			targetPrefix = prefix
-			proxy = prx
-			break
-		}
-	}
+    if strings.HasPrefix(r.URL.Path, prefix) {
+        // Выбираем тот префикс, который длиннее 
+        // (например, "/account" победит "/")
+        if len(prefix) > len(targetPrefix) {
+            targetPrefix = prefix
+            proxy = prx
+        }
+    }
+}
 
 	if proxy == nil {
 		http.Error(lrw, "Service Not Found", http.StatusNotFound)

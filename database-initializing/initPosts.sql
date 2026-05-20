@@ -154,3 +154,7 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER tr_post_likes_count
 AFTER INSERT OR DELETE ON post_likes
 FOR EACH ROW EXECUTE FUNCTION fn_update_post_likes_count();
+
+INSERT INTO categories (slug, name)
+VALUES ('cars', 'Автомобили');
+    
