@@ -403,6 +403,25 @@ func (a *App) getRoomInfoById(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(room)
 }
 
+func (a *App) getRoomSettings(w http.ResponseWriter, r *http.Request) {
+    roomIDStr := r.Header.Get("X-Room-ID")
+    roomId, err := uuid.Parse(roomIDStr)
+    if err != nil {
+        a.sendError(w, apperrors.ErrInvalidInput)
+        return
+    }
+
+    room, err := a.accountService.GetRoom(r.Context(), roomId)
+    if err != nil {
+        a.sendError(w, err)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(room)
+}
+
 func (a *App) getRoomInfo(w http.ResponseWriter, r *http.Request) {
     if r.Method != http.MethodPost {
         a.sendError(w, apperrors.ErrMethodNotAllowed)
@@ -731,6 +750,7 @@ func main() {
 	mux.HandleFunc("POST /refreshSession", app.refreshSession)
 	mux.HandleFunc("POST /logout", app.logout)
     mux.HandleFunc("GET /room/{roomId}", app.getRoom)
+    mux.HandleFunc("GET /room-settings", app.getRoomSettings)
     mux.HandleFunc("POST /updateRoom", app.updateRoom)
     mux.HandleFunc("GET /getRoomInfoById/{roomId}", app.getRoomInfoById)
     mux.HandleFunc("GET /checkRoomSubscription/{roomId}", app.checkSubscription)
