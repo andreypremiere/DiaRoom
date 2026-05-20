@@ -165,6 +165,12 @@ func main() {
 		"/account/setConfigured",
 		"/account/search",
 		"/account/room-settings",
+		"/account/update/avatar",
+		"/account/update/background",
+		"/account/update/roomUniqueId",
+		"/account/update/roomName",
+		"/account/update/bio",
+		"/account/update/categories",
 	})
 
 	gateway.AddRoute("/workshop", "http://workshop-microservice:81", []string{

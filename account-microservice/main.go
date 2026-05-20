@@ -824,6 +824,35 @@ func (a *App) UpdateRoomBio(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (a *App) UpdateCategories(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := r.Header.Get("X-Room-ID")
+	if roomIDStr == "" {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	roomId, err := uuid.Parse(roomIDStr)
+	if err != nil {
+		a.sendError(w, apperrors.ErrInternal)
+		return
+	}
+
+	var req *requests.UpdatingCategoriesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.sendError(w, apperrors.ErrInvalidInput)
+		return
+	}
+
+	err = a.accountService.UpdateCategories(r.Context(), roomId, req)
+	if err != nil {
+		a.sendError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
@@ -912,7 +941,7 @@ func main() {
     mux.HandleFunc("POST /update/roomUniqueId", app.UpdateRoomUniqueId)
     mux.HandleFunc("POST /update/roomName", app.UpdateRoomName)
     mux.HandleFunc("POST /update/bio", app.UpdateRoomBio)
-    // mux.HandleFunc("POST /update/categories", app.UpdateCategories)
+    mux.HandleFunc("POST /update/categories", app.UpdateCategories)
 
     //Внутренние
     mux.HandleFunc("POST /getRoomsInfoInternal", app.getRoomsInfo)

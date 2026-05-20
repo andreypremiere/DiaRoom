@@ -21,6 +21,42 @@ type AccountRepository struct {
 	redisClient *redis.Client
 }
 
+func (r *AccountRepository) UpdateRoomCategories(ctx context.Context, roomID uuid.UUID, categorySlugs []string) error {
+	tx, err := r.poolPg.Begin(ctx)
+	if err != nil {
+		return r.parseError(err)
+	}
+	defer tx.Rollback(ctx)
+
+	deleteQuery := `DELETE FROM room_categories WHERE room_id = $1`
+	_, err = tx.Exec(ctx, deleteQuery, roomID)
+	if err != nil {
+		return r.parseError(err)
+	}
+
+	if len(categorySlugs) > 0 {
+		insertQuery := `INSERT INTO room_categories (room_id, category_slug) VALUES ($1, $2)`
+		
+		for _, slug := range categorySlugs {
+			if slug == "" {
+				continue 
+			}
+			
+			_, err = tx.Exec(ctx, insertQuery, roomID, slug)
+			if err != nil {
+				return r.parseError(err)
+			}
+		}
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		r.parseError(err)
+	}
+
+	return nil
+}
+
 func (r *AccountRepository) UpdateRoomBio(ctx context.Context, roomID uuid.UUID, bio string) error {
 	query := `UPDATE rooms SET bio = $1 WHERE id = $2`
 

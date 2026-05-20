@@ -31,6 +31,19 @@ type AccountService struct {
 	s3Manager     *S3Manager
 }
 
+func (as *AccountService) UpdateCategories(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingCategoriesRequest) error {
+	if len(req.Categories) > 3 {
+		return apperrors.ErrInvalidInput
+	}
+
+	err := as.accountRepo.UpdateRoomCategories(ctx, roomId, req.Categories)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (as *AccountService) UpdateRoomBio(ctx context.Context, roomId uuid.UUID, req *requests.UpdatingTextFieldRequest) error {
 	count := utf8.RuneCountInString(req.Value)
 
